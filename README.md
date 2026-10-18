@@ -1,1 +1,1 @@
-# macabre-art-projector
+# art-projection-mapper
