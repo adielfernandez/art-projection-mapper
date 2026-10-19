@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.local
+.vite/
+
+# Generated FPO test content (rebuild with: python fpo/generate.py)
+fpo/show/
+fpo/static/
+fpo/tight-pool/

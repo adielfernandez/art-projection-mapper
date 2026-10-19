@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "assetManifests": [],
+  "ui": {
+    "panelSide": "left"
+  },
+  "global": {
+    "backgroundColor": "#000000",
+    "debug": {
+      "strokeWidth": 2,
+      "pointRadius": 14,
+      "crosshairSize": 22
+    }
+  },
+  "wallQuad": {
+    "corners": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "debugColor": "#0A84FF"
+  },
+  "frames": [
+    {
+      "id": "f_48u8h",
+      "corners": [
+        [
+          0.2481758524450916,
+          0.25
+        ],
+        [
+          0.418490814221575,
+          0.25
+        ],
+        [
+          0.418490814221575,
+          0.75
+        ],
+        [
+          0.2481758524450916,
+          0.75
+        ]
+      ],
+      "physicalAspect": 0.6571,
+      "debugColor": "#FF453A",
+      "captionSpacing": 0.05,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      }
+    },
+    {
+      "id": "f_jlbhf",
+      "corners": [
+        [
+          0.5815091857784249,
+          0.25
+        ],
+        [
+          0.7518241475549083,
+          0.25
+        ],
+        [
+          0.7518241475549083,
+          0.75
+        ],
+        [
+          0.5815091857784249,
+          0.75
+        ]
+      ],
+      "physicalAspect": 0.6571,
+      "debugColor": "#30D158",
+      "captionSpacing": 0.05,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      }
+    }
+  ],
+  "animation": {
+    "cycleDuration": 12,
+    "transitionInDuration": 1.5,
+    "transitionOutDuration": 1,
+    "frameStagger": 3,
+    "zoomStart": 1.15,
+    "panSpeed": 0.03,
+    "panAspectThreshold": 1.15,
+    "maxHoldDuration": 30
+  },
+  "captions": {
+    "titleSize": 0.045,
+    "lineTwoSize": 0.032,
+    "lineGap": 0.012,
+    "color": "#F0EBE3",
+    "fadeDuration": 1.2,
+    "riseDistance": 0.02,
+    "lineTwoDelay": 0.5
+  },
+  "effects": {
+    "back": {
+      "type": "placeholder",
+      "params": {}
+    },
+    "front": {
+      "type": "placeholder",
+      "params": {}
+    }
+  }
+}
