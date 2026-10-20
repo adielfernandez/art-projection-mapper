@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "assetManifests": [
-    "assets.json"
+    "macabre.json"
   ],
   "ui": {
-    "panelSide": "left"
+    "panelSide": "right"
   },
   "global": {
     "backgroundColor": "#000000",
     "debug": {
       "strokeWidth": 2,
-      "pointRadius": 14,
+      "pointRadius": 39,
       "crosshairSize": 22
     }
   },
@@ -40,25 +40,26 @@
       "id": "f_fpo01",
       "corners": [
         [
-          0.29924866536458333,
-          0.22324704660952668
+          0.09039449869791674,
+          0.04315445401693409
         ],
         [
-          0.4840580403645834,
-          0.22324704660952668
+          0.4030684570312505,
+          0.04176556512804515
         ],
         [
-          0.4840580403645834,
-          0.7232470466095267
+          0.4021331884384155,
+          0.8233364862677277
         ],
         [
-          0.29924866536458333,
-          0.7232470466095267
+          0.09226949869791676,
+          0.8309322317947121
         ]
       ],
       "physicalAspect": 0.6571,
       "debugColor": "#FF453A",
-      "captionSpacing": 0.05,
+      "captionSpacing": 0.019,
+      "captionOffsetX": 0.006,
       "inset": {
         "top": 0,
         "right": 0,
@@ -70,25 +71,26 @@
       "id": "f_fpo02",
       "corners": [
         [
-          0.6025820312500001,
-          0.23274002157497295
+          0.5784153645833338,
+          0.03903631787126925
         ],
         [
-          0.78739140625,
-          0.23274002157497295
+          0.8882768229166701,
+          0.03524002157497296
         ],
         [
-          0.78739140625,
-          0.732740021574973
+          0.8840580729166654,
+          0.8168140956490483
         ],
         [
-          0.6025820312500001,
-          0.732740021574973
+          0.5757070312500011,
+          0.8160733549083059
         ]
       ],
       "physicalAspect": 0.6571,
       "debugColor": "#30D158",
-      "captionSpacing": 0.05,
+      "captionSpacing": 0.019,
+      "captionOffsetX": -0.02,
       "inset": {
         "top": 0,
         "right": 0,
@@ -98,12 +100,12 @@
     }
   ],
   "animation": {
-    "cycleDuration": 12,
+    "cycleDuration": 4,
     "transitionInDuration": 3,
     "transitionOutDuration": 2,
     "transitionDelay": 0.5,
-    "dissolveSoftness": 2.54,
-    "dissolveNoiseScale": 1,
+    "dissolveSoftness": 1.07,
+    "dissolveNoiseScale": 1.85,
     "frameStagger": 3,
     "zoomStart": 1.15,
     "panSpeed": 0.03,
@@ -111,9 +113,9 @@
     "maxHoldDuration": 30
   },
   "captions": {
-    "titleSize": 0.077,
-    "lineTwoSize": 0.059,
-    "lineGap": 0.015,
+    "titleSize": 0.069,
+    "lineTwoSize": 0.043,
+    "lineGap": 0.006,
     "color": "#FFFFFF",
     "fadeDuration": 1.2,
     "riseDistance": 0.02,
