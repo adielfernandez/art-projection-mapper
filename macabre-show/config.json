@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
-  "assetManifests": [],
+  "assetManifests": [
+    "assets.json"
+  ],
   "ui": {
     "panelSide": "left"
   },
@@ -35,23 +37,23 @@
   },
   "frames": [
     {
-      "id": "f_48u8h",
+      "id": "f_fpo01",
       "corners": [
         [
-          0.2481758524450916,
-          0.25
+          0.29924866536458333,
+          0.22324704660952668
         ],
         [
-          0.418490814221575,
-          0.25
+          0.4840580403645834,
+          0.22324704660952668
         ],
         [
-          0.418490814221575,
-          0.75
+          0.4840580403645834,
+          0.7232470466095267
         ],
         [
-          0.2481758524450916,
-          0.75
+          0.29924866536458333,
+          0.7232470466095267
         ]
       ],
       "physicalAspect": 0.6571,
@@ -65,23 +67,23 @@
       }
     },
     {
-      "id": "f_jlbhf",
+      "id": "f_fpo02",
       "corners": [
         [
-          0.5815091857784249,
-          0.25
+          0.6025820312500001,
+          0.23274002157497295
         ],
         [
-          0.7518241475549083,
-          0.25
+          0.78739140625,
+          0.23274002157497295
         ],
         [
-          0.7518241475549083,
-          0.75
+          0.78739140625,
+          0.732740021574973
         ],
         [
-          0.5815091857784249,
-          0.75
+          0.6025820312500001,
+          0.732740021574973
         ]
       ],
       "physicalAspect": 0.6571,
@@ -97,8 +99,11 @@
   ],
   "animation": {
     "cycleDuration": 12,
-    "transitionInDuration": 1.5,
-    "transitionOutDuration": 1,
+    "transitionInDuration": 3,
+    "transitionOutDuration": 2,
+    "transitionDelay": 0.5,
+    "dissolveSoftness": 2.54,
+    "dissolveNoiseScale": 1,
     "frameStagger": 3,
     "zoomStart": 1.15,
     "panSpeed": 0.03,
@@ -106,10 +111,10 @@
     "maxHoldDuration": 30
   },
   "captions": {
-    "titleSize": 0.045,
-    "lineTwoSize": 0.032,
-    "lineGap": 0.012,
-    "color": "#F0EBE3",
+    "titleSize": 0.077,
+    "lineTwoSize": 0.059,
+    "lineGap": 0.015,
+    "color": "#FFFFFF",
     "fadeDuration": 1.2,
     "riseDistance": 0.02,
     "lineTwoDelay": 0.5

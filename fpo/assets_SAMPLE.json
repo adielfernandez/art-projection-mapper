@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "title": "Image 1",
+      "artist": "asdfsadf",
+      "year": "1900",
+      "filepath": "../media/s-a.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Image 2",
+      "artist": "sadfasdf",
+      "year": "1900",
+      "filepath": "../media/s-a.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Image 3",
+      "artist": "fdsfda",
+      "year": "1900",
+      "filepath": "../media/s-a.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Image 4",
+      "artist": "qewrw",
+      "year": "1900",
+      "filepath": "../media/s-a.jpg",
+      "zoom": true,
+      "pan": true
+    }
+  ]
+}

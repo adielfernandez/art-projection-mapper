@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "title": "The Nightmare",
+      "artist": "Henry Fuseli",
+      "year": "1781",
+      "filepath": "media/01-fuseli-the-nightmare.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Saturn Devouring His Son",
+      "artist": "Francisco Goya",
+      "year": "1820–23",
+      "filepath": "media/02-goya-saturn.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Still-Life with a Skull",
+      "artist": "Philippe de Champaigne",
+      "year": "c. 1671",
+      "filepath": "media/03-champaigne-still-life-with-a-skull.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Pandemonium",
+      "artist": "John Martin",
+      "year": "1841",
+      "filepath": "media/04-martin-pandemonium.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "The Ghost of a Flea",
+      "artist": "William Blake",
+      "year": "c. 1819–20",
+      "filepath": "media/05-blake-ghost-of-a-flea.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "The Garden of Death",
+      "artist": "Hugo Simberg",
+      "year": "1896",
+      "filepath": "media/06-simberg-garden-of-death.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Witches' Sabbath (El aquelarre)",
+      "artist": "Francisco Goya",
+      "year": "1798",
+      "filepath": "media/07-goya-witches-sabbath-aquelarre.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Lucifer",
+      "artist": "Franz von Stuck",
+      "year": "c. 1890",
+      "filepath": "media/08-stuck-lucifer.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Carceri d'invenzione, Plate VII (The Drawbridge)",
+      "artist": "Giovanni Battista Piranesi",
+      "year": "c. 1749–61",
+      "filepath": "media/09-piranesi-carceri-vii.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Death at the Ball",
+      "artist": "Félicien Rops",
+      "year": "c. 1865–75",
+      "filepath": "media/10-rops-death-at-the-ball.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Witches Going to Their Sabbath",
+      "artist": "Luis Ricardo Falero",
+      "year": "1878",
+      "filepath": "media/11-falero-witches-going-to-their-sabbath.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "An Allegory of the Vanities of Human Life",
+      "artist": "Harmen Steenwijck",
+      "year": "c. 1640",
+      "filepath": "media/12-steenwijck-vanities-of-human-life.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "The Great Red Dragon and the Woman Clothed with the Sun",
+      "artist": "William Blake",
+      "year": "c. 1805",
+      "filepath": "media/13-blake-great-red-dragon.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Dante and Virgil in Hell",
+      "artist": "William-Adolphe Bouguereau",
+      "year": "1850",
+      "filepath": "media/14-bouguereau-dante-and-virgil.jpg",
+      "zoom": true,
+      "pan": false
+    },
+    {
+      "title": "The Abbey in the Oakwood",
+      "artist": "Caspar David Friedrich",
+      "year": "1809–10",
+      "filepath": "media/15-friedrich-abbey-in-the-oakwood.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Skeletons Fighting Over a Pickled Herring",
+      "artist": "James Ensor",
+      "year": "1891",
+      "filepath": "media/16-ensor-skeletons-pickled-herring.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "The Apparition",
+      "artist": "Gustave Moreau",
+      "year": "1876",
+      "filepath": "media/17-moreau-the-apparition.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "The Dance of Death (Imago Mortis)",
+      "artist": "Michael Wolgemut",
+      "year": "1493",
+      "filepath": "media/18-wolgemut-dance-of-death.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Isle of the Dead",
+      "artist": "Arnold Böcklin",
+      "year": "1883",
+      "filepath": "media/19-bocklin-isle-of-the-dead.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "La Femme Chauve-Souris (The Bat-Woman)",
+      "artist": "Albert Joseph Pénot",
+      "year": "c. 1890",
+      "filepath": "media/20-penot-la-femme-chauve-souris.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Death the Strangler (Der Tod als Erwürger)",
+      "artist": "Alfred Rethel",
+      "year": "1851",
+      "filepath": "media/21-rethel-death-the-strangler.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Pyramid of Skulls",
+      "artist": "Paul Cézanne",
+      "year": "c. 1901",
+      "filepath": "media/22-cezanne-pyramid-of-skulls.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Witches at their Incantations",
+      "artist": "Salvator Rosa",
+      "year": "c. 1646",
+      "filepath": "media/23-rosa-witches-at-their-incantations.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "The Astrologer (The Dance of Death)",
+      "artist": "Hans Holbein the Younger",
+      "year": "c. 1523–26",
+      "filepath": "media/25-holbein-the-astrologer.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "The Premature Burial (L'inhumation précipitée)",
+      "artist": "Antoine Wiertz",
+      "year": "1854",
+      "filepath": "media/26-wiertz-premature-burial.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Satan Hurled Headlong (Paradise Lost, Book I)",
+      "artist": "Gustave Doré",
+      "year": "1866",
+      "filepath": "media/27-dore-satan-hurled-headlong.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Skull of a Skeleton with Burning Cigarette",
+      "artist": "Vincent van Gogh",
+      "year": "1886",
+      "filepath": "media/28-van-gogh-skull-with-cigarette.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Medusa",
+      "artist": "Caravaggio",
+      "year": "1597",
+      "filepath": "media/29-caravaggio-medusa.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Départ pour le Sabbat",
+      "artist": "Albert Joseph Pénot",
+      "year": "1910",
+      "filepath": "media/30-penot-depart-pour-le-sabbat.jpg",
+      "zoom": true,
+      "pan": true
+    },
+    {
+      "title": "Witches' Sabbath (The Great He-Goat)",
+      "artist": "Francisco Goya",
+      "year": "1821–23",
+      "filepath": "media/31-goya-witches-sabbath-the-great-he-goat.jpg",
+      "zoom": true,
+      "pan": true
+    }
+  ]
+}
