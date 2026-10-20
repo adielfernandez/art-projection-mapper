@@ -40,3 +40,31 @@ export function isConvexQuad(q: Quad, minArea = 1e-9): boolean {
   }
   return true;
 }
+
+/** True if `p` lies inside the polygon (even-odd rule; works for non-convex quads too). */
+export function pointInPolygon(p: readonly [number, number], poly: readonly (readonly [number, number])[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i]!;
+    const [xj, yj] = poly[j]!;
+    if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Clamp a normalized point to the viewport. */
+export function clampToViewport(p: readonly [number, number]): [number, number] {
+  return [Math.min(1, Math.max(0, p[0])), Math.min(1, Math.max(0, p[1]))];
+}
+
+/**
+ * Limit a translation (normalized units) of a set of points so none leaves the viewport.
+ * Each axis is limited on its own, so a quad pinned against one edge still slides along it.
+ * A point already outside may move back in but never further out.
+ */
+export function clampTranslation(points: readonly (readonly [number, number])[], dx: number, dy: number): [number, number] {
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  const limit = (d: number, min: number, max: number) => Math.min(Math.max(0, 1 - max), Math.max(Math.min(0, -min), d));
+  return [limit(dx, Math.min(...xs), Math.max(...xs)), limit(dy, Math.min(...ys), Math.max(...ys))];
+}

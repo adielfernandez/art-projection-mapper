@@ -28,6 +28,7 @@ const scheduler = new Scheduler(store, {
   maxAnisotropy: renderer.gl.capabilities.getMaxAnisotropy(),
 });
 renderer.setVisualSource((id, aspect) => scheduler.visual(id, aspect));
+renderer.setCaptionSource((id) => scheduler.captionState(id));
 const panel = new Panel(store, project);
 document.body.append(panel.el);
 

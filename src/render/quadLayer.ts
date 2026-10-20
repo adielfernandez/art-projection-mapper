@@ -69,6 +69,7 @@ export class QuadLayer {
     u.uFade!.value = v.fade;
     u.uSeed!.value = v.seed;
     u.uSoftness!.value = v.softness;
+    u.uNoiseScale!.value = v.noiseScale;
   }
 
   render(renderer: THREE.WebGLRenderer): void {

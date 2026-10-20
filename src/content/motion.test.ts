@@ -110,4 +110,17 @@ describe('sampleView', () => {
     expect(sampleView(plan, 1.6, FRAME, 0).cx).toBeCloseTo(plan.from, 12);
     expect(sampleView(plan, 1.6, FRAME, plan.hold).cx).toBeCloseTo(plan.to, 12);
   });
+
+  it('stretches motion over an explicit duration (in + hold + out) and keeps moving through it', () => {
+    const plan = { kind: 'zoom' as const, hold: 12, zoomStart: 1.15 };
+    const total = 2 + 12 + 1.5;
+    const cover = coverSpan(1, FRAME);
+    // Not finished when the hold ends, finished exactly at the end of the out-transition.
+    expect(sampleView(plan, 1, FRAME, 2 + 12, total).sx).toBeLessThan(cover.sx - 1e-6);
+    expect(sampleView(plan, 1, FRAME, total, total).sx).toBeCloseTo(cover.sx, 12);
+    // Strictly moving at the start of the hold and the start of the out-transition.
+    for (const t of [2, 14]) {
+      expect(sampleView(plan, 1, FRAME, t + 0.05, total).sx).toBeGreaterThan(sampleView(plan, 1, FRAME, t, total).sx);
+    }
+  });
 });

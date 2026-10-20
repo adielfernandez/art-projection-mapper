@@ -52,6 +52,7 @@ export function newFrame(
     physicalAspect: DEFAULT_PHYSICAL_ASPECT,
     debugColor: nextFrameColor(existing.map((f) => f.debugColor)),
     captionSpacing: 0.05,
+    captionOffsetX: 0,
     inset: { top: 0, right: 0, bottom: 0, left: 0 },
   };
 }
@@ -80,6 +81,7 @@ export function defaultConfig(canvasAspect: number): Config {
       transitionOutDuration: 1.0,
       transitionDelay: 0.5,
       dissolveSoftness: 0.5,
+      dissolveNoiseScale: 1,
       frameStagger: 3,
       zoomStart: 1.15,
       panSpeed: 0.03,

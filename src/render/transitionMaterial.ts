@@ -25,28 +25,40 @@ const fragment = /* glsl */ `
   uniform float uFade;    // 1 visible .. 0 black
   uniform float uSeed;
   uniform float uSoftness; // dissolve edge width in noise units
+  uniform float uNoiseScale; // blob size; 1 = about five blobs per frame width
   varying vec2 vLocal;
 
-  float hash(vec2 p) {
-    p = fract(p * vec2(123.34, 456.21));
-    p += dot(p, p + 45.32);
-    return fract(p.x * p.y);
+  // Unit gradient for a lattice point (sin-free hash, stable at large coordinates).
+  vec2 grad(vec2 p) {
+    vec3 p3 = fract(p.xyx * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    vec2 g = fract((p3.xx + p3.yz) * p3.zy) * 2.0 - 1.0;
+    return g * inversesqrt(max(dot(g, g), 1e-8));
   }
-  float vnoise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+  // 2D simplex gradient noise, about -1..1. Triangular lattice, no flat square cells.
+  float snoise(vec2 p) {
+    const float K1 = 0.366025404; // (sqrt(3) - 1) / 2
+    const float K2 = 0.211324865; // (3 - sqrt(3)) / 6
+    vec2 i = floor(p + (p.x + p.y) * K1);
+    vec2 a = p - i + (i.x + i.y) * K2;
+    vec2 o = a.x > a.y ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    vec2 b = a - o + K2;
+    vec2 c = a - 1.0 + 2.0 * K2;
+    vec3 h = max(0.5 - vec3(dot(a, a), dot(b, b), dot(c, c)), 0.0);
+    vec3 n = h * h * h * h * vec3(dot(a, grad(i)), dot(b, grad(i + o)), dot(c, grad(i + 1.0)));
+    return dot(n, vec3(70.0));
   }
+  // Each octave is rotated ~37 degrees so lattice directions never line up across octaves.
   float fbm(vec2 p) {
+    const mat2 R = mat2(1.6, -1.2, 1.2, 1.6) * 1.015; // rotate and scale by 2.03
     float v = 0.0;
     float a = 0.5;
     for (int i = 0; i < 4; i++) {
-      v += a * vnoise(p);
-      p = p * 2.03 + 17.1;
+      v += a * snoise(p);
+      p = R * p + 17.1;
       a *= 0.5;
     }
-    return v / 0.9375;
+    return v / 0.9375; // about -0.45..0.45 for 2nd..98th percentile
   }
 
   void main() {
@@ -60,7 +72,7 @@ const fragment = /* glsl */ `
       col = texture2D(uTex, tuv).rgb;
 
       // Noise-mask dissolve in. Noise is in physical units so blobs are round on any frame.
-      float n = clamp((fbm(p * 5.0 + uSeed) - 0.25) / 0.5, 0.0, 1.0);
+      float n = clamp(0.5 + fbm(p * (5.0 / max(uNoiseScale, 0.01)) + uSeed) * 1.1, 0.0, 1.0);
       float feather = max(uSoftness, 0.01);
       float t = uReveal * (1.0 + feather);
       float reveal = smoothstep(n, n + feather, t);
@@ -96,6 +108,7 @@ export function createFrameMaterial(): THREE.ShaderMaterial {
       uFade: { value: 1 },
       uSeed: { value: 0 },
       uSoftness: { value: 0.5 },
+      uNoiseScale: { value: 1 },
     },
     depthTest: false,
     depthWrite: false,

@@ -18,6 +18,8 @@ export interface FrameVisual {
   seed: number;
   /** Dissolve edge softness (live from config). */
   softness: number;
+  /** Dissolve noise blob size (live from config). */
+  noiseScale: number;
 }
 
 export interface SchedulerDeps {
@@ -52,7 +54,7 @@ interface Pending {
   cancelled: boolean;
 }
 
-const BLACK: FrameVisual = { texture: null, invertV: false, view: { cx: 0.5, cy: 0.5, sx: 1, sy: 1 }, reveal: 0, fade: 0, seed: 0, softness: 0.5 };
+const BLACK: FrameVisual = { texture: null, invertV: false, view: { cx: 0.5, cy: 0.5, sx: 1, sy: 1 }, reveal: 0, fade: 0, seed: 0, softness: 0.5, noiseScale: 1 };
 /** If `ended` never fires, give up this long after the video's duration. */
 const VIDEO_END_GRACE = 3;
 
@@ -65,8 +67,10 @@ class FramePlayer {
   next: Pending | null = null;
   inDur = 0;
   outDur = 0;
-  /** Elapsed hold time when the out-transition began (for sampling the final pose). */
+  /** Elapsed hold time when the out-transition began. */
   holdEnd = 0;
+  /** Pan/zoom length: in + hold + out, fixed when the in-transition starts. */
+  motionDur = 0;
 
   constructor(readonly id: string) {}
 
@@ -92,6 +96,9 @@ export class Scheduler {
   private signature = '';
   private clock = 0;
   private transitionListeners = new Set<(e: TransitionEvent) => void>();
+  private paused = false;
+  /** Videos that were playing when the show was paused. */
+  private pausedVideos = new Set<HTMLVideoElement>();
 
   constructor(
     private store: Store,
@@ -99,8 +106,35 @@ export class Scheduler {
   ) {
     store.subscribe((e) => {
       if (e.assets || e.frames) this.sync();
+      if (e.runtime) this.applyPause();
     });
     this.sync();
+  }
+
+  /**
+   * Pause/resume. While paused, update() does nothing: the clock, every player's state
+   * timer and all transitions freeze, no new transitions or listeners fire, and media that
+   * finishes loading waits. Videos have their own clock, so the ones playing are paused and
+   * exactly those are resumed.
+   */
+  private applyPause(): void {
+    const paused = this.store.runtime.paused;
+    if (paused === this.paused) return;
+    this.paused = paused;
+    if (paused) {
+      for (const p of this.players.values()) {
+        const v = p.current?.media.video;
+        if (v && !v.paused && !v.ended) {
+          v.pause();
+          this.pausedVideos.add(v);
+        }
+      }
+    } else {
+      // Only resume videos still on screen; released ones were unloaded.
+      const onScreen = new Set([...this.players.values()].map((p) => p.current?.media.video));
+      for (const v of this.pausedVideos) if (onScreen.has(v)) void v.play().catch(() => {});
+      this.pausedVideos.clear();
+    }
   }
 
   /** Called at the start of each in-transition (effects hook). */
@@ -117,6 +151,28 @@ export class Scheduler {
   currentAsset(frameId: string): { uid: string; entry: AssetEntry; state: PlayerState; t: number } | null {
     const p = this.players.get(frameId);
     return p?.current ? { uid: p.current.uid, entry: p.current.entry, state: p.state, t: p.t } : null;
+  }
+
+  /**
+   * Caption state for a frame: the asset as it appeared (later edits apply at its next
+   * appearance) and timing relative to the end of its in-transition.
+   */
+  captionState(frameId: string): { uid: string; entry: AssetEntry; sinceIn: number | null; fade: number } | null {
+    const p = this.players.get(frameId);
+    const cur = p?.current;
+    if (!p || !cur) return null;
+    const base = { uid: cur.uid, entry: cur.entry };
+    if (this.mode === 'static') return { ...base, sinceIn: null, fade: 1 };
+    switch (p.state) {
+      case 'in':
+        return { ...base, sinceIn: p.t - p.inDur, fade: 1 };
+      case 'hold':
+        return { ...base, sinceIn: p.t, fade: 1 };
+      case 'out':
+        return { ...base, sinceIn: p.holdEnd + p.t, fade: p.outDur > 0 ? Math.max(0, 1 - p.t / p.outDur) : 0 };
+      default:
+        return null;
+    }
   }
 
   /** Drop all media and restart playback (project load). */
@@ -273,6 +329,7 @@ export class Scheduler {
   // ---------- per-tick ----------
 
   update(dt: number): void {
+    if (this.paused) return;
     this.clock += dt;
     for (const p of this.players.values()) {
       p.t += dt;
@@ -320,6 +377,9 @@ export class Scheduler {
         p.state = 'in';
         p.t = 0;
         p.inDur = anim.transitionInDuration;
+        // Out duration is fixed now too, so motion can span the whole visible time.
+        p.outDur = anim.transitionOutDuration;
+        p.motionDur = p.inDur + (plan.hold ?? 0) + p.outDur;
         const v = n.media.video;
         if (v && plan.kind === 'video') {
           v.loop = plan.loop;
@@ -332,7 +392,7 @@ export class Scheduler {
       case 'in':
         if (p.t >= p.inDur) {
           p.state = 'hold';
-          p.t = 0;
+          p.t -= p.inDur; // keep the overshoot so motion doesn't stall for a frame
           this.trySelect(p); // preload the next asset while this one holds
         }
         return;
@@ -352,7 +412,6 @@ export class Scheduler {
           p.holdEnd = p.t;
           p.state = 'out';
           p.t = 0;
-          p.outDur = anim.transitionOutDuration;
         }
         return;
       }
@@ -376,21 +435,24 @@ export class Scheduler {
     const cur = p?.current;
     if (!p || !cur) return BLACK;
     const m = cur.media;
-    const softness = this.store.config.animation.dissolveSoftness;
+    const { dissolveSoftness: softness, dissolveNoiseScale: noiseScale } = this.store.config.animation;
+    const base = { texture: m.texture, invertV: m.invertV, seed: cur.seed, softness, noiseScale };
     if (this.mode === 'static') {
-      return { texture: m.texture, invertV: m.invertV, view: sampleView(null, m.aspect, frameAspect, 0), reveal: 1, fade: 1, seed: cur.seed, softness };
+      return { ...base, view: sampleView(null, m.aspect, frameAspect, 0), reveal: 1, fade: 1 };
     }
     let reveal = 1;
     let fade = 1;
-    let holdT = 0;
+    // Motion runs from the start of the dissolve-in to the end of the fade-out.
+    let motionT = 0;
     if (p.state === 'in') {
       reveal = p.inDur > 0 ? Math.min(1, p.t / p.inDur) : 1;
+      motionT = p.t;
     } else if (p.state === 'hold') {
-      holdT = p.t;
+      motionT = p.inDur + p.t;
     } else if (p.state === 'out') {
-      holdT = p.holdEnd;
+      motionT = p.inDur + p.holdEnd + p.t;
       fade = p.outDur > 0 ? Math.max(0, 1 - p.t / p.outDur) : 0;
     }
-    return { texture: m.texture, invertV: m.invertV, view: sampleView(cur.plan, m.aspect, frameAspect, holdT), reveal, fade, seed: cur.seed, softness };
+    return { ...base, view: sampleView(cur.plan, m.aspect, frameAspect, motionT, p.motionDur), reveal, fade };
   }
 }

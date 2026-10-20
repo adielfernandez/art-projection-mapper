@@ -87,13 +87,21 @@ export function planMotion(input: MotionInput, cfg: MotionConfig, rng: () => num
   return { kind: 'static', hold: cfg.cycleDuration };
 }
 
-/** View at `t` seconds after the hold began (clamped to the hold). */
-export function sampleView(plan: MotionPlan | null, assetAspect: number, frameAspect: number, t: number): View {
+/**
+ * View at `t` seconds into a motion lasting `duration` seconds (clamped). Defaults to
+ * the plan's hold; cycling passes in + hold + out so motion never visibly stops.
+ */
+export function sampleView(
+  plan: MotionPlan | null,
+  assetAspect: number,
+  frameAspect: number,
+  t: number,
+  duration: number = plan?.hold ?? 0,
+): View {
   const { sx, sy } = coverSpan(assetAspect, frameAspect);
   const view: View = { cx: 0.5, cy: 0.5, sx, sy };
   if (!plan) return view;
-  const hold = plan.hold ?? 0;
-  const p = hold > 0 ? easedProgress(t / hold) : 1;
+  const p = duration > 0 ? easedProgress(t / duration) : 1;
   if (plan.kind === 'zoom') {
     const scale = plan.zoomStart + (1 - plan.zoomStart) * p;
     view.sx = sx / scale;

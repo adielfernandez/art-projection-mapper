@@ -21,8 +21,10 @@ export interface FrameConfig {
   /** Physical width ÷ height. */
   physicalAspect: number;
   debugColor: string;
-  /** In frame widths (bottom-edge length in wall space). */
+  /** Caption Y offset: gap below the bottom edge, in frame widths (bottom-edge length in wall space). */
   captionSpacing: number;
+  /** Caption X offset: shift of the captions' left edge from the BL corner along the bottom edge, in frame widths. */
+  captionOffsetX: number;
   /** Frame-local units. */
   inset: Inset;
 }
@@ -46,6 +48,8 @@ export interface AnimationConfig {
   transitionDelay: number;
   /** Edge width of the noise dissolve-in, in noise units (higher = softer). */
   dissolveSoftness: number;
+  /** Size of the dissolve's noise blobs; 1 = about five blobs across a frame, higher = larger. */
+  dissolveNoiseScale: number;
   frameStagger: number;
   zoomStart: number;
   panSpeed: number;

@@ -29,6 +29,8 @@ export interface RuntimeState {
   selected: PointRef | null;
   debugVisible: boolean;
   panelOpen: boolean;
+  /** Show paused: the animation clock and videos stop; rendering and edits continue. */
+  paused: boolean;
   /** Per-quad test pattern toggles; missing entries use TEST_PATTERN_DEFAULT. */
   testPattern: Record<QuadId, boolean>;
   configDirty: boolean;
@@ -75,12 +77,18 @@ export type Listener = (e: StoreEvent) => void;
 /** Homomorphic, so tuples (e.g. corner points) stay tuples. */
 export type DeepReadonly<T> = T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T;
 
-export type FrameSettings = Partial<Pick<FrameConfig, 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'inset'>>;
+export type FrameSettings = Partial<Pick<FrameConfig, 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'captionOffsetX' | 'inset'>>;
 
-interface MappingEdit {
-  ref: PointRef;
+interface PointChange {
+  index: CornerIndex;
   before: NormPoint;
   after: NormPoint;
+}
+
+/** One undo step: a single point, or all four corners of a whole-quad move. */
+interface MappingEdit {
+  quadId: QuadId;
+  points: PointChange[];
   kind: 'drag' | 'nudge' | 'set';
   /** performance.now() of the last change merged into this edit. */
   time: number;
@@ -102,7 +110,8 @@ export class Store {
   private listeners = new Set<Listener>();
   private undoStack: MappingEdit[] = [];
   private redoStack: MappingEdit[] = [];
-  private drag: { ref: PointRef; before: NormPoint } | null = null;
+  /** Corners of the quad being dragged (one point or the whole quad), as they were at drag start. */
+  private drag: { quadId: QuadId; before: NormPoint[] } | null = null;
   private pending: PendingEvent | null = null;
 
   constructor(config: Config, viewport: { w: number; h: number }) {
@@ -111,6 +120,7 @@ export class Store {
       selected: null,
       debugVisible: true,
       panelOpen: false,
+      paused: false,
       testPattern: {},
       configDirty: false,
       assetsDirty: false,
@@ -292,27 +302,54 @@ export class Store {
     this.emit((e) => e.corners.add(ref.quadId));
   }
 
+  /** Set all four corners at once (whole-quad drag; no undo entry, recorded on endDrag). */
+  setCorners(quadId: QuadId, points: readonly NormPoint[]): void {
+    const corners = this.mutableCorners(quadId);
+    if (!corners) return;
+    let changed = false;
+    for (const i of [0, 1, 2, 3] as CornerIndex[]) {
+      const p = points[i];
+      if (!p || (corners[i][0] === p[0] && corners[i][1] === p[1])) continue;
+      corners[i] = [p[0], p[1]];
+      changed = true;
+    }
+    if (!changed) return;
+    this.markConfigDirty();
+    this.emit((e) => e.corners.add(quadId));
+  }
+
   /** Set a point as its own undo step (numeric input). */
   movePoint(ref: PointRef, p: NormPoint): void {
     const cur = this.mutableCorners(ref.quadId)?.[ref.index];
     if (!cur || (cur[0] === p[0] && cur[1] === p[1])) return;
-    this.pushEdit({ ref, before: [cur[0], cur[1]], after: [p[0], p[1]], kind: 'set', time: performance.now() });
+    this.pushEdit({ quadId: ref.quadId, points: [{ index: ref.index, before: [cur[0], cur[1]], after: [p[0], p[1]] }], kind: 'set', time: performance.now() });
     this.setPoint(ref, p);
   }
 
-  beginDrag(ref: PointRef): void {
-    const corners = this.mutableCorners(ref.quadId);
+  /** Start a drag of one point, or of the whole quad. endDrag() records whatever moved as one undo step. */
+  beginDrag(ref: PointRef): void;
+  beginDrag(quadId: QuadId): void;
+  beginDrag(target: PointRef | QuadId): void {
+    const quadId = typeof target === 'string' ? target : target.quadId;
+    const corners = this.mutableCorners(quadId);
     if (!corners) return;
-    this.drag = { ref, before: [...corners[ref.index]] };
+    this.drag = { quadId, before: corners.map((c) => [c[0], c[1]] as NormPoint) };
   }
 
   endDrag(): void {
     const d = this.drag;
     this.drag = null;
     if (!d) return;
-    const after = this.getCorners(d.ref.quadId)?.[d.ref.index];
-    if (!after || (after[0] === d.before[0] && after[1] === d.before[1])) return;
-    this.pushEdit({ ref: d.ref, before: d.before, after: [after[0], after[1]], kind: 'drag', time: performance.now() });
+    const now = this.mutableCorners(d.quadId);
+    if (!now) return;
+    const points: PointChange[] = [];
+    d.before.forEach((before, i) => {
+      const after = now[i]!;
+      if (after[0] !== before[0] || after[1] !== before[1]) {
+        points.push({ index: i as CornerIndex, before, after: [after[0], after[1]] });
+      }
+    });
+    if (points.length) this.pushEdit({ quadId: d.quadId, points, kind: 'drag', time: performance.now() });
   }
 
   /** Move a point by a delta in device pixels. Bursts on the same point merge into one undo step. */
@@ -324,11 +361,12 @@ export class Store {
     const after: NormPoint = [before[0] + dxPx / w, before[1] + dyPx / h];
     const now = performance.now();
     const top = this.undoStack[this.undoStack.length - 1];
-    if (top && top.kind === 'nudge' && samePoint(top.ref, ref) && now - top.time <= NUDGE_MERGE_MS && this.redoStack.length === 0) {
-      top.after = after;
+    const topPoint = top?.points.length === 1 ? { quadId: top.quadId, index: top.points[0]!.index } : null;
+    if (top && top.kind === 'nudge' && samePoint(topPoint, ref) && now - top.time <= NUDGE_MERGE_MS && this.redoStack.length === 0) {
+      top.points[0]!.after = after;
       top.time = now;
     } else {
-      this.pushEdit({ ref, before, after, kind: 'nudge', time: now });
+      this.pushEdit({ quadId: ref.quadId, points: [{ index: ref.index, before, after }], kind: 'nudge', time: now });
     }
     this.setPoint(ref, after);
   }
@@ -338,10 +376,9 @@ export class Store {
     for (;;) {
       const edit = this.undoStack.pop();
       if (!edit) return;
-      if (!this.mutableCorners(edit.ref.quadId)) continue; // quad was removed
+      if (!this.mutableCorners(edit.quadId)) continue; // quad was removed
       this.redoStack.push(edit);
-      this.setPoint(edit.ref, edit.before);
-      this.select(edit.ref);
+      this.applyEdit(edit, 'before');
       return;
     }
   }
@@ -351,13 +388,18 @@ export class Store {
     for (;;) {
       const edit = this.redoStack.pop();
       if (!edit) return;
-      if (!this.mutableCorners(edit.ref.quadId)) continue;
+      if (!this.mutableCorners(edit.quadId)) continue;
       edit.time = 0; // never merge further nudges into a redone edit
       this.undoStack.push(edit);
-      this.setPoint(edit.ref, edit.after);
-      this.select(edit.ref);
+      this.applyEdit(edit, 'after');
       return;
     }
+  }
+
+  /** Apply one side of an edit. Single-point edits also select that point; whole-quad moves leave selection alone. */
+  private applyEdit(edit: MappingEdit, side: 'before' | 'after'): void {
+    for (const pt of edit.points) this.setPoint({ quadId: edit.quadId, index: pt.index }, pt[side]);
+    if (edit.points.length === 1) this.select({ quadId: edit.quadId, index: edit.points[0]!.index });
   }
 
   // ---------- frame actions ----------
@@ -392,6 +434,7 @@ export class Store {
     if (patch.physicalAspect !== undefined) f.physicalAspect = patch.physicalAspect;
     if (patch.debugColor !== undefined) f.debugColor = patch.debugColor;
     if (patch.captionSpacing !== undefined) f.captionSpacing = patch.captionSpacing;
+    if (patch.captionOffsetX !== undefined) f.captionOffsetX = patch.captionOffsetX;
     if (patch.inset !== undefined) f.inset = { ...patch.inset };
     this.markConfigDirty();
     this.emit((e) => (e.frames = true));
@@ -454,6 +497,12 @@ export class Store {
   setDebugVisible(v: boolean): void {
     if (this._runtime.debugVisible === v) return;
     this._runtime.debugVisible = v;
+    this.emit((e) => (e.runtime = true));
+  }
+
+  setPaused(paused: boolean): void {
+    if (this._runtime.paused === paused) return;
+    this._runtime.paused = paused;
     this.emit((e) => (e.runtime = true));
   }
 

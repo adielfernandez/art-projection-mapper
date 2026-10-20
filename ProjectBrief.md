@@ -145,6 +145,7 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
       "physicalAspect": 0.6571,
       "debugColor": "#FF453A",
       "captionSpacing": 0.05,
+      "captionOffsetX": 0,
       "inset": { "top": 0, "right": 0, "bottom": 0, "left": 0 }
     }
   ],
@@ -177,7 +178,7 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
 Field notes:
 - **`corners`** are in canvas-normalized coordinates, ordered TL, TR, BR, BL relative to the physical frame.
 - **`physicalAspect`** is the physical width ÷ height. The default is `0.6571` (23″ × 35″).
-- **`captionSpacing`, `titleSize`, `lineTwoSize`, `lineGap` and `riseDistance`** are in units of the frame's bottom-edge length measured in wall space (one "frame width").
+- **`captionSpacing` (panel: "Caption Y offset"), `captionOffsetX` (panel: "Caption X offset"; may be negative), `titleSize`, `lineTwoSize`, `lineGap` and `riseDistance`** are in units of the frame's bottom-edge length measured in wall space (one "frame width").
 - **`inset`** values are in frame-local units. They shrink the visible artwork area inward from each edge to hide light spill onto the frame molding. The inset band renders black.
 - **`panSpeed`** is in frame widths per second.
 - **Durations** are in seconds.
@@ -238,8 +239,10 @@ Field notes:
 **Quads.** Each frame and the wall quad has four independently movable control points. The wall quad defaults to the canvas corners. The same mapping code and UX applies to all quads.
 
 **Mouse:**
-- Press near a control point (within hit radius) to select and drag it.
-- Dragging moves only that point.
+- Press near a control point (within hit radius) to select and drag it. Dragging a point moves only that point.
+- Press inside a frame (away from its points) and drag to move the whole frame; its four points keep their relative positions in screen space. Movement starts after a 4 px dead zone, so a click never moves it. The topmost frame wins where frames overlap; the wall quad is never dragged by its body. Selection is unchanged.
+- Shift while dragging scales motion to 10% for fine placement.
+- All drags are clamped to the viewport. A whole-frame drag stops flush when any corner reaches an edge, and still slides along that edge.
 - The selected point renders highlighted.
 
 **Keyboard nudging** (applies to the selected point):
@@ -348,12 +351,14 @@ Selection logic gets Vitest coverage:
    - **Travel:** from one edge of the cover-fit overflow to the other.
    - **Hold:** `travel / panSpeed`, where travel is in frame widths. If that exceeds `maxHoldDuration`, hold = `maxHoldDuration` and speed increases to fit.
    - **Zoom** is ignored.
-   - **Velocity:** near-constant, with short eased start and stop (ease-in/out over the first and last 10% of the hold).
+   - **Velocity:** near-constant, with short eased start and stop (ease-in/out over the first and last 10% of the motion).
 3. **Image with `zoom = true`** (including `pan = true` images that did not exceed the threshold).
-   - Scale goes from `zoomStart` down to 1.0 (cover) over `cycleDuration`.
+   - Scale goes from `zoomStart` down to 1.0 (cover) over the motion window (below).
    - Zoom is centered.
    - Velocity profile is the same as for pan.
 4. **Image with neither.** Static cover for `cycleDuration`.
+
+**Motion window.** Pan and zoom run from the start of the in-transition to the end of the out-transition (`transitionInDuration + hold + transitionOutDuration`), so motion never visibly starts or stops. The hold durations above are unchanged; the same travel or zoom is spread over the longer window, so the actual speed is slightly below `panSpeed`. Both transition durations are fixed when the in-transition starts.
 
 **Edits during playback.** Changes to timing parameters apply from the next cycle. Changes to the playing asset's fields apply at its next appearance.
 
@@ -368,10 +373,10 @@ Selection logic gets Vitest coverage:
 - **Line 1 missing but line 2 data exists:** render line 2 alone in line 1's position.
 
 **Placement** is in wall space, per frame:
-- Take the frame's bottom edge (BL→BR), transform both points to wall-local coordinates via the wall quad's inverse homography, and use the edge midpoint as the anchor.
+- Take the frame's bottom edge (BL→BR) and transform both points to wall-local coordinates via the wall quad's inverse homography.
 - Offset perpendicular to the edge, away from the frame, by `captionSpacing` (per frame).
 - Rotate the caption to match the bottom edge's angle.
-- Center-align the text.
+- Left-align the text. Its left edge sits at the BL corner, shifted along the edge by `captionOffsetX` (per frame; negative = left).
 
 **Sizing and wrapping:**
 - Size is relative to the bottom-edge length in wall space (section 4.2 units).

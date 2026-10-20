@@ -1,7 +1,7 @@
 import { defaultConfig } from '../state/defaults';
 import type { Store } from '../state/store';
 import { mediaKind } from '../content/assetPool';
-import type { Config } from '../state/schema';
+import type { Config, ManifestRecord } from '../state/schema';
 import { CONFIG_PATH, loadConfig, saveConfig } from './configIO';
 import { getMediaFile, loadManifests, saveManifest } from './manifestIO';
 import { loadStoredHandle, storeHandle } from './handleStore';
@@ -17,6 +17,8 @@ export type ConfirmFn = (message: string, confirmLabel: string) => Promise<boole
 export class ProjectController {
   private root: FileSystemDirectoryHandle | null = null;
   private stored: FileSystemDirectoryHandle | null = null;
+  /** Identifies the latest folder load; an older one that finishes later is discarded. */
+  private loadToken = 0;
 
   constructor(private store: Store) {}
 
@@ -137,9 +139,9 @@ export class ProjectController {
     }
   }
 
-  private async loadAssets(root: FileSystemDirectoryHandle, config: Config): Promise<void> {
+  /** Read every manifest and flag missing files and unsupported types, without touching the store. */
+  private async readAssets(root: FileSystemDirectoryHandle, config: Config): Promise<{ manifests: ManifestRecord[]; errors: Map<string, string> }> {
     const manifests = await loadManifests(root, config.assetManifests);
-    // Flag missing files and unsupported types before publishing, so the pool and mode are right from the start.
     const errors = new Map<string, string>();
     await Promise.all(
       manifests.flatMap((m) =>
@@ -156,35 +158,37 @@ export class ProjectController {
         }),
       ),
     );
-    if (this.root !== root) return; // another folder was opened meanwhile
-    // Same tick, so subscribers see one combined change.
-    this.store.setManifests(manifests);
-    for (const [uid, msg] of errors) this.store.setAssetError(uid, msg);
+    return { manifests, errors };
   }
 
   private async loadFrom(handle: FileSystemDirectoryHandle): Promise<void> {
     const { w, h } = this.store.runtime.viewport;
+    const token = ++this.loadToken;
     try {
+      // Read everything first: switching the folder before the new manifests are in would let
+      // the scheduler load the previous project's assets from the new folder.
       const result = await loadConfig(handle, w / h);
+      const config = result?.config ?? defaultConfig(w / h);
+      const assets = await this.readAssets(handle, config);
+      await storeHandle(handle);
+      if (token !== this.loadToken) return; // another folder was opened meanwhile
+
+      // Apply in one tick, so subscribers see config and assets change together.
       this.root = handle;
       this.stored = handle;
-      await storeHandle(handle);
       this.store.setReopenName(handle.name);
-      const config = result?.config ?? defaultConfig(w / h);
-      if (result) {
-        this.store.replaceConfig(result.config, handle.name);
-        this.store.setIoMessage(
-          result.warnings.length
+      this.store.replaceConfig(config, handle.name);
+      this.store.setIoMessage(
+        !result
+          ? { kind: 'info', text: `No ${CONFIG_PATH} yet; showing the default project. Save creates it.` }
+          : result.warnings.length
             ? { kind: 'warn', text: `Loaded with ${result.warnings.length} problem(s); defaults were used for:`, details: result.warnings }
             : { kind: 'info', text: `Loaded ${CONFIG_PATH}.` },
-        );
-      } else {
-        this.store.replaceConfig(config, handle.name);
-        this.store.setIoMessage({ kind: 'info', text: `No ${CONFIG_PATH} yet; showing the default project. Save creates it.` });
-      }
-      await this.loadAssets(handle, config);
+      );
+      this.store.setManifests(assets.manifests);
+      for (const [uid, msg] of assets.errors) this.store.setAssetError(uid, msg);
     } catch (err) {
-      this.fail(`Could not load "${handle.name}"`, err);
+      if (token === this.loadToken) this.fail(`Could not load "${handle.name}"`, err);
     }
   }
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CaptionRenderer, type CaptionSourceState } from '../captions/captionRenderer';
 import type { FrameVisual } from '../content/scheduler';
 import type { Quad } from '../math/homography';
 import { WALL_QUAD_ID, type QuadId } from '../state/schema';
@@ -12,6 +13,7 @@ import { QuadLayer } from './quadLayer';
 export class Renderer {
   readonly gl: THREE.WebGLRenderer;
   private wall: QuadLayer;
+  private captions: CaptionRenderer;
   private frames = new Map<QuadId, QuadLayer>();
   private clearColor = new THREE.Color();
   /** Supplies per-frame content each tick (the scheduler). */
@@ -25,6 +27,7 @@ export class Renderer {
     this.gl.autoClear = false;
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
     this.wall = new QuadLayer(store.config.wallQuad.debugColor, { content: false });
+    this.captions = new CaptionRenderer(store);
     this.resize();
     this.syncFrames();
     this.syncAll();
@@ -41,6 +44,10 @@ export class Renderer {
 
   setVisualSource(fn: (frameId: string, frameAspect: number) => FrameVisual): void {
     this.visualSource = fn;
+  }
+
+  setCaptionSource(fn: (frameId: string) => CaptionSourceState | null): void {
+    this.captions.setSource(fn);
   }
 
   /** Upload a texture now, so first use doesn't stall a transition. */
@@ -61,7 +68,10 @@ export class Renderer {
       if (this.visualSource) layer.setVisual(this.visualSource(f.id, f.physicalAspect));
       layer.render(gl);
     }
-    // 4. Captions (M4), 5. Front effect layer (M5)
+    // 4. Captions, in wall space
+    this.captions.update(this.wall.quadCam.homography);
+    this.captions.render(gl, this.wall.quadCam.camera);
+    // 5. Front effect layer (M5)
   }
 
   private onChange(e: StoreEvent): void {

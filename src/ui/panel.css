@@ -488,3 +488,29 @@
   line-height: 1.4;
   pointer-events: none;
 }
+
+/* ---------- show controls ---------- */
+
+.show-controls {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.btn.pause-toggle {
+  width: 100%;
+  padding: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.btn.pause-toggle.paused {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #1a1a1a;
+}
+
+.btn.pause-toggle.paused:hover {
+  background: #ffe04d;
+  border-color: #ffe04d;
+}

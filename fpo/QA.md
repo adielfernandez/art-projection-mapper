@@ -142,7 +142,17 @@ Also watch for:
 - [ ] T02 zooms; T01 and T03 are static.
 - [ ] Expected: occasionally a frame stays black a little longer between transitions while it waits for a free asset. It must never freeze.
 
-## 7. Captions (M4: not implemented yet, data is ready)
+## 7. Captions (M4)
+
+- [ ] Captions sit centered below each frame's bottom edge. The title is in Source Serif 4 Italic and "artist, year" is in Public Sans, in warm off-white.
+- [ ] The caption fades in and rises toward the frame once the artwork's dissolve finishes. Line 2 starts about 0.5 s after the title. Both fade out with the artwork.
+- [ ] Static mode (`fpo/static/`): captions are shown immediately, with no animation.
+- [ ] Drag or nudge a frame's bottom corners. The caption follows live and rotates to match the bottom edge's angle. The text re-sharpens a moment after you stop moving.
+- [ ] Moving a wall-quad corner shifts captions with the wall.
+- [ ] **Caption spacing** (per frame, in Mapping) moves that frame's caption away from or toward the frame.
+- [ ] Caption sizes, gap, color, fade, rise and line-2 delay (in Animation) update live. Timing changes apply to the next appearance.
+- [ ] Text is crisp on the projector, with no blur or blockiness.
+- [ ] Editing a playing asset's title changes its caption at that asset's **next** appearance.
 
 Text variants in `show/`, covering every case in brief §5.5:
 

@@ -4,7 +4,7 @@ import type { Store } from '../state/store';
 import { Binder, button, h } from './controls';
 import { attachHelpTooltips } from './helpTooltip';
 import { animationSection } from './sections/animationSection';
-import { appControls } from './sections/appControls';
+import { appControls, showControls } from './sections/appControls';
 import { assetsSection } from './sections/assetsSection';
 import { configSection } from './sections/configSection';
 import type { PanelContext } from './sections/context';
@@ -36,6 +36,7 @@ export class Panel {
     };
 
     this.el = h('aside', { class: 'panel' }, [
+      showControls(ctx),
       appControls(ctx),
       this.confirmBar,
       h('div', { class: 'panel-body' }, [

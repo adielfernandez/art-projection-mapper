@@ -66,18 +66,23 @@ describe('parseConfig', () => {
     expect(warnings.length).toBeGreaterThanOrEqual(5);
   });
 
-  it('fills transitionDelay and dissolveSoftness for configs saved before they existed', () => {
+  it('fills transitionDelay and the dissolve settings for configs saved before they existed', () => {
     const old = { cycleDuration: 8, transitionInDuration: 2, transitionOutDuration: 1, frameStagger: 3 };
     const { config, warnings } = parseConfig({ schemaVersion: 1, animation: old }, ASPECT);
     expect(warnings).toEqual([]);
     expect(config.animation.cycleDuration).toBe(8);
     expect(config.animation.transitionDelay).toBe(0.5);
     expect(config.animation.dissolveSoftness).toBe(0.5);
+    expect(config.animation.dissolveNoiseScale).toBe(1);
 
-    const parsed = parseConfig({ schemaVersion: 1, animation: { transitionDelay: 0, dissolveSoftness: 0 } }, ASPECT);
+    const parsed = parseConfig(
+      { schemaVersion: 1, animation: { transitionDelay: 0, dissolveSoftness: 0, dissolveNoiseScale: -2 } },
+      ASPECT,
+    );
     expect(parsed.config.animation.transitionDelay).toBe(0); // no black hold is valid
     expect(parsed.config.animation.dissolveSoftness).toBe(0.5); // must be positive
-    expect(parsed.warnings).toHaveLength(1);
+    expect(parsed.config.animation.dissolveNoiseScale).toBe(1); // must be positive
+    expect(parsed.warnings).toHaveLength(2);
   });
 
   it('accepts an empty frame list', () => {

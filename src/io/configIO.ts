@@ -144,6 +144,7 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           physicalAspect: num(rawFrame, 'physicalAspect', fallback.physicalAspect, path, { positive: true }),
           debugColor: color(rawFrame, 'debugColor', fallback.debugColor, path),
           captionSpacing: num(rawFrame, 'captionSpacing', fallback.captionSpacing, path),
+          captionOffsetX: num(rawFrame, 'captionOffsetX', fallback.captionOffsetX, path),
           inset,
         });
       });
@@ -159,6 +160,7 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     transitionOutDuration: num(a, 'transitionOutDuration', da.transitionOutDuration, 'animation', { min: 0 }),
     transitionDelay: num(a, 'transitionDelay', da.transitionDelay, 'animation', { min: 0 }),
     dissolveSoftness: num(a, 'dissolveSoftness', da.dissolveSoftness, 'animation', { positive: true }),
+    dissolveNoiseScale: num(a, 'dissolveNoiseScale', da.dissolveNoiseScale, 'animation', { positive: true }),
     frameStagger: num(a, 'frameStagger', da.frameStagger, 'animation', { min: 0 }),
     zoomStart: num(a, 'zoomStart', da.zoomStart, 'animation', { positive: true }),
     panSpeed: num(a, 'panSpeed', da.panSpeed, 'animation', { positive: true }),

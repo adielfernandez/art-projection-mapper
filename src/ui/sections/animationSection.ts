@@ -6,17 +6,21 @@ type Range = Omit<SliderOpts, 'get' | 'set'>;
 
 const ANIMATION_HELP: Record<keyof AnimationConfig, string> = {
   cycleDuration:
-    'How long each artwork holds after its in-transition. Also the length of a zoom, and the cutoff for videos shorter than this (they loop until it elapses).',
-  transitionInDuration: 'Length of the noise dissolve from black when a new artwork appears.',
-  transitionOutDuration: 'Length of the fade to black before a frame changes artwork.',
+    'How long each artwork holds, fully visible, between its transitions. Also the cutoff for videos shorter than this (they loop until it elapses).',
+  transitionInDuration: 'Length of the noise dissolve from black when a new artwork appears. Pan and zoom already move during it.',
+  transitionOutDuration: 'Length of the fade to black before a frame changes artwork. Pan and zoom keep moving until it ends.',
   transitionDelay: 'How long a frame stays black after one artwork fades out, before the next one dissolves in.',
   dissolveSoftness:
     'Edge softness of the noise dissolve-in. Low = crisp, hard-edged blotches; high = wide, gradual edges that read more like a fade.',
+  dissolveNoiseScale:
+    'Size of the dissolve blotches. 1 = about five across a frame; 2 = twice as large. Applies live.',
   frameStagger: "Delay between frames' first cycles at startup (frame n starts n × this), so frames never change in unison.",
   maxHoldDuration:
     'Longest a panning image may hold. Wide panoramas speed up to finish within it. Does not apply to video.',
-  zoomStart: 'Starting scale for Zoom images. They ease from this down to 1.0 (exact cover) over the cycle duration. 1.15 = 15% closer.',
-  panSpeed: 'Pan speed in frame widths per second. Sets how long a pan holds (travel ÷ speed), up to Max hold.',
+  zoomStart:
+    'Starting scale for Zoom images. They move from this down to 1.0 (exact cover) from the start of the dissolve-in to the end of the fade-out. 1.15 = 15% closer.',
+  panSpeed:
+    'Sets how long a pan holds (travel ÷ speed), up to Max hold. The pan spans the whole visible time including both transitions, so it moves slightly slower than this.',
   panAspectThreshold:
     "How far an image's shape must differ from the frame before Pan applies. 1.15 = 15% wider or taller. Below it, the image zooms (if Zoom is on) or holds still.",
 };
@@ -66,6 +70,7 @@ export function animationSection(ctx: PanelContext): HTMLElement {
     anim('maxHoldDuration', 'Max hold (pan)', { ...sec, min: 0.5, sliderMin: 1, sliderMax: 120 }),
     h('div', { class: 'subhead', text: 'Dissolve' }),
     anim('dissolveSoftness', 'Dissolve softness', { min: 0.01, step: 0.01, decimals: 2, sliderMin: 0.01, sliderMax: 4 }),
+    anim('dissolveNoiseScale', 'Transition noise scale', { min: 0.05, step: 0.05, decimals: 2, sliderMin: 0.25, sliderMax: 8 }),
     h('div', { class: 'subhead', text: 'Motion' }),
     anim('zoomStart', 'Zoom start', { min: 1, step: 0.01, decimals: 3, sliderMin: 1, sliderMax: 2 }),
     anim('panSpeed', 'Pan speed (fw/s)', { min: 0.001, step: 0.001, decimals: 4, sliderMin: 0.001, sliderMax: 0.2 }),

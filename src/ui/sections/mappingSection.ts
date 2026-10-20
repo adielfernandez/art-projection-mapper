@@ -1,9 +1,11 @@
 import { WALL_QUAD_ID, type QuadId } from '../../state/schema';
 import { CORNER_NAMES, type CornerIndex } from '../../state/store';
-import { Binder, button, checkboxRow, colorRow, h, numberInput, numberRow, section, sliderRow } from '../controls';
+import { Binder, button, checkboxRow, colorRow, h, numberInput, numberRow, section, sliderRow, withHelp } from '../controls';
 import type { PanelContext } from './context';
 
 const INSET_MAX = 0.2;
+/** Caption X offset slider spans ± this many frame widths (the number field accepts any value). */
+const CAPTION_X_RANGE = 0.5;
 
 export function mappingSection(ctx: PanelContext): HTMLElement {
   const { store, binder } = ctx;
@@ -86,10 +88,20 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
       get: () => frame().physicalAspect, set: (v) => store.updateFrame(id, { physicalAspect: v }),
       min: 0.05, max: 20, step: 0.0001, decimals: 4,
     }),
-    sliderRow(b, 'Caption spacing', {
-      get: () => frame().captionSpacing, set: (v) => store.updateFrame(id, { captionSpacing: v }),
-      step: 0.001, decimals: 3, sliderMin: 0, sliderMax: 0.3,
-    }),
+    withHelp(
+      sliderRow(b, 'Caption X offset', {
+        get: () => frame().captionOffsetX, set: (v) => store.updateFrame(id, { captionOffsetX: v }),
+        step: 0.001, decimals: 3, sliderMin: -CAPTION_X_RANGE, sliderMax: CAPTION_X_RANGE,
+      }),
+      "Shifts the captions' left edge along the frame's bottom edge, in frame widths. 0 = lined up with the bottom-left corner; negative moves left, positive right.",
+    ),
+    withHelp(
+      sliderRow(b, 'Caption Y offset', {
+        get: () => frame().captionSpacing, set: (v) => store.updateFrame(id, { captionSpacing: v }),
+        step: 0.001, decimals: 3, sliderMin: 0, sliderMax: 0.3,
+      }),
+      "Gap between the frame's bottom edge and the captions, in frame widths.",
+    ),
     h('div', { class: 'subhead', text: 'Inset (frame widths)' }),
     insetRow('top', 'Top'),
     insetRow('right', 'Right'),

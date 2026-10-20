@@ -73,6 +73,25 @@ describe('Store mapping undo', () => {
     expect([...store.getCorners(ref.quadId)![0]]).toEqual(end);
   });
 
+  it('a whole-frame drag is one undo step for all four corners and keeps the selection', () => {
+    const { store, ref } = makeStore();
+    const id = ref.quadId;
+    const start = store.getCorners(id)!.map((c) => [...c]);
+    const other: PointRef = { quadId: WALL_QUAD_ID, index: 2 };
+    store.select(other);
+    store.beginDrag(id);
+    for (let i = 1; i <= 5; i++) store.setCorners(id, start.map(([x, y]) => [x! + i * 0.01, y! - i * 0.01]));
+    store.endDrag();
+    const moved = store.getCorners(id)!.map((c) => [...c]);
+    expect(moved[2]![0]).toBeCloseTo(start[2]![0]! + 0.05, 12);
+    store.undo();
+    expect(store.getCorners(id)!.map((c) => [...c])).toEqual(start);
+    expect(store.runtime.selected).toEqual(other);
+    expect(store.canUndo()).toBe(false);
+    store.redo();
+    expect(store.getCorners(id)!.map((c) => [...c])).toEqual(moved);
+  });
+
   it('a click without movement records nothing', () => {
     const { store, ref } = makeStore();
     store.beginDrag(ref);
