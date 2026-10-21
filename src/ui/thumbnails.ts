@@ -1,4 +1,4 @@
-import { mediaKind } from '../content/assetPool';
+import { mediaKind } from '../content/selection';
 import { makeThumbnail } from '../content/mediaLoader';
 import type { ProjectController } from '../io/projectController';
 import type { Store } from '../state/store';
@@ -16,17 +16,17 @@ export class Thumbnails {
   private queue: string[] = [];
   private running = false;
   private generation = 0;
-  private manifests: unknown;
+  private pools: unknown;
 
   constructor(
     private store: Store,
     private project: ProjectController,
   ) {
-    this.manifests = store.manifests;
+    this.pools = store.pools;
     store.subscribe((e) => {
-      // A project load replaces the manifest list; live edits change it in place.
-      if (e.assets && store.manifests !== this.manifests) {
-        this.manifests = store.manifests;
+      // A project load replaces the pool list; live edits change it in place.
+      if (e.assets && store.pools !== this.pools) {
+        this.pools = store.pools;
         this.clear();
       }
     });
@@ -80,7 +80,7 @@ export class Thumbnails {
       let canvas: HTMLCanvasElement | null = null;
       if (found && kind) {
         try {
-          const file = await this.project.getMediaFile(found.manifest.path, found.entry.filepath);
+          const file = await this.project.getMediaFile(found.pool.path, found.entry.filepath);
           canvas = await makeThumbnail(file, kind, THUMB_PX);
         } catch {
           canvas = null;

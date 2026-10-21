@@ -68,3 +68,30 @@ export function clampTranslation(points: readonly (readonly [number, number])[],
   const limit = (d: number, min: number, max: number) => Math.min(Math.max(0, 1 - max), Math.max(Math.min(0, -min), d));
   return [limit(dx, Math.min(...xs), Math.max(...xs)), limit(dy, Math.min(...ys), Math.max(...ys))];
 }
+
+/**
+ * Rotate a quad (normalized points) 90° clockwise on screen about its centroid. The turn is
+ * done in device pixels, so the shape is kept on a non-square canvas. Points keep their
+ * corner slots, so whatever the quad shows turns with it. If the result sticks out of the
+ * viewport it is shifted back in, each axis on its own, without changing its shape; on an
+ * axis where it is larger than the viewport it is centered instead.
+ */
+export function rotateQuadClockwise(points: readonly Vec2[], viewport: { w: number; h: number }): [number, number][] {
+  const { w, h } = viewport;
+  const px = points.map(([x, y]) => [x * w, y * h] as const);
+  const cx = px.reduce((s, p) => s + p[0], 0) / px.length;
+  const cy = px.reduce((s, p) => s + p[1], 0) / px.length;
+  // y points down on screen, so (dx, dy) → (-dy, dx) turns clockwise.
+  const turned = px.map(([x, y]) => [cx - (y - cy), cy + (x - cx)] as const);
+  const shift = (values: number[], size: number) => {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (max - min > size) return size / 2 - (min + max) / 2;
+    if (min < 0) return -min;
+    if (max > size) return size - max;
+    return 0;
+  };
+  const sx = shift(turned.map((p) => p[0]), w);
+  const sy = shift(turned.map((p) => p[1]), h);
+  return turned.map(([x, y]) => [(x + sx) / w, (y + sy) / h]);
+}

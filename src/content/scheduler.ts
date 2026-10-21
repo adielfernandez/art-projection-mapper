@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
-import type { AssetEntry, ShowType } from '../state/schema';
+import { WALL_QUAD_ID, type AssetEntry, type PlaylistItem, type ShowType } from '../state/schema';
 import type { Store } from '../state/store';
-import { buildPool, mediaKind, poolMode, staticAssignments, type PoolMode } from './assetPool';
+import { mediaKind, playableAssets, randomizedMode, staticAssignments, type FrameMode } from './selection';
 import { loadImage, loadVideo, type ImageSizing, type LoadedMedia } from './mediaLoader';
 import { planMotion, sampleView, type MotionPlan, type View } from './motion';
 import { nextEntry, playlistMode, relocateAnchor, resolvePlaylist, START_ANCHOR, type Anchor, type PlaylistEntry } from './playlist';
@@ -21,21 +21,16 @@ export interface FrameVisual {
   softness: number;
   /** Dissolve noise blob size (live from config). */
   noiseScale: number;
+  /** Transition in as a plain fade instead of the noise dissolve (live from config). */
+  simpleFade: boolean;
 }
 
 export interface SchedulerDeps {
-  getMediaFile(manifestPath: string, filepath: string): Promise<File>;
+  getMediaFile(poolPath: string, filepath: string): Promise<File>;
   /** Upload a texture to the GPU now (during hold), so the transition never stalls on it. */
   prepareTexture(texture: THREE.Texture): void;
   maxTextureSize: number;
   maxAnisotropy: number;
-}
-
-export interface TransitionEvent {
-  frameId: string;
-  /** Asset entry as it appears (snapshot). */
-  entry: AssetEntry;
-  transitionInDuration: number;
 }
 
 type PlayerState = 'loading' | 'in' | 'hold' | 'out' | 'static';
@@ -60,13 +55,13 @@ interface Pending {
   cancelled: boolean;
 }
 
-const BLACK: FrameVisual = { texture: null, invertV: false, view: { cx: 0.5, cy: 0.5, sx: 1, sy: 1 }, reveal: 0, fade: 0, seed: 0, softness: 0.5, noiseScale: 1 };
+const BLACK: FrameVisual = { texture: null, invertV: false, view: { cx: 0.5, cy: 0.5, sx: 1, sy: 1 }, reveal: 0, fade: 0, seed: 0, softness: 0.5, noiseScale: 1, simpleFade: false };
 /** If `ended` never fires, give up this long after the video's duration. */
 const VIDEO_END_GRACE = 3;
 
 class FramePlayer {
   /** Manual show: this frame's mode (black, one asset held, or cycling). */
-  mode: PoolMode = 'empty';
+  mode: FrameMode = 'empty';
   state: PlayerState = 'loading';
   t = 0;
   /** Scheduler time before which the next in-transition may not start (stagger, transition delay). */
@@ -97,19 +92,18 @@ class FramePlayer {
 }
 
 /**
- * Per-frame playback. Reads config and manifests from the store; the only state it
+ * Per-frame playback. Reads config and pools from the store; the only state it
  * writes is media load errors, via store actions.
  */
 export class Scheduler {
   private players = new Map<string, FramePlayer>();
   private bag = new ShuffleBag();
-  /** Randomized show: the pool mode shared by every frame. */
-  private mode: PoolMode = 'empty';
+  /** Randomized show: the mode shared by every frame. */
+  private mode: FrameMode = 'empty';
   private signature = '';
   /** Show type the players were set up for; null forces a fresh start. */
   private showType: ShowType | null = null;
   private clock = 0;
-  private transitionListeners = new Set<(e: TransitionEvent) => void>();
   private paused = false;
   /** Videos that were playing when the show was paused. */
   private pausedVideos = new Set<HTMLVideoElement>();
@@ -149,12 +143,6 @@ export class Scheduler {
       for (const v of this.pausedVideos) if (onScreen.has(v)) void v.play().catch(() => {});
       this.pausedVideos.clear();
     }
-  }
-
-  /** Called at the start of each in-transition (effects hook). */
-  onTransitionIn(fn: (e: TransitionEvent) => void): () => void {
-    this.transitionListeners.add(fn);
-    return () => this.transitionListeners.delete(fn);
   }
 
   /** Displayed asset per frame (for captions and the panel). */
@@ -200,25 +188,28 @@ export class Scheduler {
     this.sync();
   }
 
-  // ---------- pool / mode ----------
+  // ---------- assets / mode ----------
 
   private sync(): void {
     const cfg = this.store.config;
     const frameIds = cfg.frames.map((f) => f.id);
 
-    // Remove players for deleted frames.
+    // Remove players for deleted frames (the wall's player stays).
     for (const [id, p] of this.players) {
-      if (!frameIds.includes(id)) {
+      if (id !== WALL_QUAD_ID && !frameIds.includes(id)) {
         p.release();
         this.players.delete(id);
       }
     }
 
-    // Switching show type starts every frame over.
+    // Switching show type starts every frame over (the wallpaper plays on).
     const fresh = this.showType !== cfg.showType;
     if (fresh) {
-      for (const p of this.players.values()) p.release();
-      this.players.clear();
+      for (const [id, p] of this.players) {
+        if (id === WALL_QUAD_ID) continue;
+        p.release();
+        this.players.delete(id);
+      }
       this.showType = cfg.showType;
       this.signature = '';
       this.mode = 'empty';
@@ -226,6 +217,8 @@ export class Scheduler {
     }
     if (cfg.showType === 'manual') this.syncManual(frameIds, fresh);
     else this.syncRandomized(frameIds);
+    // The wall always plays its own playlist, like a frame in a manual show.
+    this.syncPlaylist(WALL_QUAD_ID, cfg.wallQuad.playlist, 0);
   }
 
   /**
@@ -236,58 +229,58 @@ export class Scheduler {
    */
   private syncManual(frameIds: string[], fresh: boolean): void {
     const cfg = this.store.config;
-    const { manifests } = this.store;
-    const errors = this.store.runtime.assetErrors;
     const stagger = cfg.animation.frameStagger;
-    frameIds.forEach((id, i) => {
-      const frame = cfg.frames[i]!;
-      const p = this.player(id);
-      p.entries = resolvePlaylist(frame.playlist, this.store.playlistKeys(id), manifests, errors);
-      p.anchor = relocateAnchor(p.entries, p.anchor);
-      const mode = playlistMode(p.entries);
-      if (mode !== p.mode) {
-        p.release();
-        p.mode = mode;
-        p.t = 0;
-        p.state = mode === 'static' ? 'static' : 'loading';
-        // Stagger frames only when the whole show starts; a single frame changing mode starts now.
-        p.startAt = this.clock + (fresh ? i * stagger : 0);
-      }
-
-      if (mode === 'static') {
-        const j = p.entries.findIndex((e) => e.uid);
-        const e = p.entries[j]!;
-        p.anchor = { key: e.key, index: j }; // cycling continues after it if more are added
-        if (p.current?.uid === e.uid || p.next?.uid === e.uid) return;
-        this.cancelNext(p);
-        this.load(p, e.uid!, e.key, j);
-      } else if (mode === 'cycling' && p.next) {
-        const want = p.entries[nextEntry(p.entries, p.anchor)];
-        if (!want || want.key !== p.next.key || want.uid !== p.next.uid) this.cancelNext(p);
-        else p.next.index = p.entries.indexOf(want);
-      }
-    });
+    // Stagger frames only when the whole show starts; a single frame changing mode starts now.
+    frameIds.forEach((id, i) => this.syncPlaylist(id, cfg.frames[i]!.playlist, fresh ? i * stagger : 0));
   }
 
-  /** Randomized show: one shared pool, shuffled across frames. */
+  /** One playlist-driven player (a frame in a manual show, or the wall). `delay`: start offset on a mode change. */
+  private syncPlaylist(id: string, playlist: readonly Readonly<PlaylistItem>[], delay: number): void {
+    const p = this.player(id);
+    p.entries = resolvePlaylist(playlist, this.store.playlistKeys(id), this.store.pools, this.store.runtime.assetErrors, id === WALL_QUAD_ID);
+    p.anchor = relocateAnchor(p.entries, p.anchor);
+    const mode = playlistMode(p.entries);
+    if (mode !== p.mode) {
+      p.release();
+      p.mode = mode;
+      p.t = 0;
+      p.state = mode === 'static' ? 'static' : 'loading';
+      p.startAt = this.clock + delay;
+    }
+
+    if (mode === 'static') {
+      const j = p.entries.findIndex((e) => e.uid);
+      const e = p.entries[j]!;
+      p.anchor = { key: e.key, index: j }; // cycling continues after it if more are added
+      if (p.current?.uid === e.uid || p.next?.uid === e.uid) return;
+      this.cancelNext(p);
+      this.load(p, e.uid!, e.key, j);
+    } else if (mode === 'cycling' && p.next) {
+      const want = p.entries[nextEntry(p.entries, p.anchor)];
+      if (!want || want.key !== p.next.key || want.uid !== p.next.uid) this.cancelNext(p);
+      else p.next.index = p.entries.indexOf(want);
+    }
+  }
+
+  /** Randomized show: every playable asset, shuffled across frames. */
   private syncRandomized(frameIds: string[]): void {
     const cfg = this.store.config;
-    const pool = buildPool(this.store.manifests, this.store.runtime.assetErrors).map((p) => p.uid);
-    const mode = poolMode(pool.length, frameIds.length);
-    const sig = `${mode}|${pool.join(',')}|${frameIds.join(',')}`;
+    const playable = playableAssets(this.store.pools, this.store.runtime.assetErrors).map((p) => p.uid);
+    const mode = randomizedMode(playable.length, frameIds.length);
+    const sig = `${mode}|${playable.join(',')}|${frameIds.join(',')}`;
     if (sig === this.signature) return;
     const prevMode = this.mode;
     this.signature = sig;
     this.mode = mode;
-    const poolSet = new Set(pool);
+    const playableSet = new Set(playable);
 
     if (mode === 'empty') {
-      for (const p of this.players.values()) p.release();
+      for (const [id, p] of this.players) if (id !== WALL_QUAD_ID) p.release();
       return;
     }
 
     if (mode === 'static') {
-      const assign = staticAssignments(pool, frameIds);
+      const assign = staticAssignments(playable, frameIds);
       for (const id of frameIds) {
         const p = this.player(id);
         const want = assign.get(id)!;
@@ -303,7 +296,7 @@ export class Scheduler {
     }
 
     // Cycling
-    this.bag.setItems(pool);
+    this.bag.setItems(playable);
     const stagger = cfg.animation.frameStagger;
     frameIds.forEach((id, i) => {
       const existing = this.players.get(id);
@@ -313,16 +306,21 @@ export class Scheduler {
         p.state = 'loading';
         p.t = 0;
         p.startAt = this.clock + i * stagger;
-      } else if (existing.next && !poolSet.has(existing.next.uid)) {
-        // A queued asset left the pool (error or edit): pick again.
+      } else if (existing.next && !playableSet.has(existing.next.uid)) {
+        // A queued asset is no longer playable (error or edit): pick again.
         this.cancelNext(existing);
       }
     });
   }
 
-  /** A frame's mode: shared by all frames in a randomized show, per frame in a manual one. */
-  private modeOf(p: FramePlayer): PoolMode {
-    return this.showType === 'manual' ? p.mode : this.mode;
+  /** A player follows its own playlist: every frame in a manual show, and always the wall. */
+  private playsPlaylist(p: FramePlayer): boolean {
+    return this.showType === 'manual' || p.id === WALL_QUAD_ID;
+  }
+
+  /** A player's mode: shared by all frames in a randomized show, per player otherwise. */
+  private modeOf(p: FramePlayer): FrameMode {
+    return this.playsPlaylist(p) ? p.mode : this.mode;
   }
 
   private cancelNext(p: FramePlayer): void {
@@ -343,12 +341,22 @@ export class Scheduler {
 
   // ---------- loading ----------
 
+  /** Width ÷ height of what a player fills: a frame's physical aspect, or the wall's (the canvas). */
+  private aspectOf(id: string): number {
+    if (id === WALL_QUAD_ID) {
+      const { w, h } = this.store.runtime.viewport;
+      return w / h;
+    }
+    return this.store.config.frames.find((f) => f.id === id)?.physicalAspect ?? 1;
+  }
+
   private frameSizing(frameId: string): ImageSizing {
-    const f = this.store.config.frames.find((x) => x.id === frameId);
+    const cfg = this.store.config;
+    const corners = frameId === WALL_QUAD_ID ? cfg.wallQuad.corners : cfg.frames.find((x) => x.id === frameId)?.corners;
     const { w, h } = this.store.runtime.viewport;
-    const zoom = this.store.config.animation.zoomStart;
-    if (!f) return { frameW: w / 4, frameH: h / 2, zoom, maxTextureSize: this.deps.maxTextureSize };
-    const px = f.corners.map(([x, y]) => [x * w, y * h] as const);
+    const zoom = cfg.animation.zoomStart;
+    if (!corners) return { frameW: w / 4, frameH: h / 2, zoom, maxTextureSize: this.deps.maxTextureSize };
+    const px = corners.map(([x, y]) => [x * w, y * h] as const);
     const dist = (a: number, b: number) => Math.hypot(px[a]![0] - px[b]![0], px[a]![1] - px[b]![1]);
     return {
       frameW: Math.max(dist(0, 1), dist(3, 2)),
@@ -366,11 +374,11 @@ export class Scheduler {
       pending.failed = true;
       return;
     }
-    const { manifest, entry } = found;
+    const { pool, entry } = found;
     const kind = mediaKind(entry.filepath);
     const run = async (): Promise<LoadedMedia> => {
       if (!kind) throw new Error('Unsupported file type. Use .jpg .jpeg .png .webp .avif .mp4 .webm.');
-      const file = await this.deps.getMediaFile(manifest.path, entry.filepath);
+      const file = await this.deps.getMediaFile(pool.path, entry.filepath);
       if (kind === 'image') return loadImage(file, this.frameSizing(p.id), this.deps.maxAnisotropy);
       return loadVideo(file);
     };
@@ -389,7 +397,7 @@ export class Scheduler {
         if (p.next === pending) p.next = null;
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`Asset failed: ${entry.filepath}`, err);
-        this.store.setAssetError(uid, msg); // triggers sync; the pool drops this asset
+        this.store.setAssetError(uid, msg); // triggers sync, which drops this asset
       },
     );
   }
@@ -400,7 +408,7 @@ export class Scheduler {
    */
   private trySelect(p: FramePlayer): void {
     if (p.next || this.modeOf(p) !== 'cycling') return;
-    if (this.showType === 'manual') {
+    if (this.playsPlaylist(p)) {
       const j = nextEntry(p.entries, p.anchor);
       const e = p.entries[j];
       if (e?.uid) this.load(p, e.uid, e.key, j);
@@ -408,6 +416,7 @@ export class Scheduler {
     }
     const exclude = new Set<string>();
     for (const o of this.players.values()) {
+      if (o.id === WALL_QUAD_ID) continue; // the wallpaper doesn't take assets away from the frames
       if (o.current) exclude.add(o.current.uid);
       if (o.next) exclude.add(o.next.uid);
     }
@@ -450,7 +459,6 @@ export class Scheduler {
         const n = p.next;
         if (!n?.media || this.clock < p.startAt) return;
         const entry = { ...(this.store.findAsset(n.uid)?.entry ?? { filepath: '' }) };
-        const frame = this.store.config.frames.find((f) => f.id === p.id);
         const plan = planMotion(
           {
             kind: n.media.kind,
@@ -458,7 +466,7 @@ export class Scheduler {
             zoom: !!entry.zoom,
             pan: !!entry.pan,
             assetAspect: n.media.aspect,
-            frameAspect: frame?.physicalAspect ?? 1,
+            frameAspect: this.aspectOf(p.id),
           },
           anim,
         );
@@ -477,7 +485,6 @@ export class Scheduler {
           v.currentTime = 0;
           void v.play().catch(() => {});
         }
-        for (const fn of this.transitionListeners) fn({ frameId: p.id, entry, transitionInDuration: p.inDur });
         return;
       }
       case 'in':
@@ -526,8 +533,9 @@ export class Scheduler {
     const cur = p?.current;
     if (!p || !cur) return BLACK;
     const m = cur.media;
-    const { dissolveSoftness: softness, dissolveNoiseScale: noiseScale } = this.store.config.animation;
-    const base = { texture: m.texture, invertV: m.invertV, seed: cur.seed, softness, noiseScale };
+    const { dissolveSoftness: softness, dissolveNoiseScale: noiseScale, transitionInStyle } = this.store.config.animation;
+    const simpleFade = transitionInStyle === 'fade';
+    const base = { texture: m.texture, invertV: m.invertV, seed: cur.seed, softness, noiseScale, simpleFade };
     if (this.modeOf(p) === 'static') {
       return { ...base, view: sampleView(null, m.aspect, frameAspect, 0), reveal: 1, fade: 1 };
     }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { DecodeRequest, DecodeResponse } from './decodeWorker';
-import type { MediaKind } from './assetPool';
+import type { MediaKind } from './selection';
 
 /** Max image resolution relative to its on-screen cover size. */
 const IMAGE_DENSITY = 2;

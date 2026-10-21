@@ -12,7 +12,10 @@ export interface PlaybackInfo {
 export interface PanelContext {
   store: Store;
   project: ProjectController;
+  /** Ask in the bar at the top of the panel. */
   confirm: ConfirmFn;
+  /** Ask right below `anchor` (a section's <summary> opens that section), where the action was taken. */
+  confirmAt(anchor: HTMLElement): ConfirmFn;
   /** Remembers which collapsible sections are open, by key. */
   openState: Map<string, boolean>;
   binder: Binder;

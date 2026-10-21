@@ -1,11 +1,33 @@
 import { CONFIG_SCHEMA_VERSION } from './schema';
 
+type Obj = Record<string, unknown>;
+const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** Rename a key, keeping key order, unless the new key is already set. */
+function renameKey(o: Obj, from: string, to: string): Obj {
+  if (!(from in o) || to in o) return o;
+  return Object.fromEntries(Object.entries(o).map(([k, v]) => [k === from ? to : k, v]));
+}
+
 /**
  * Config migrations, keyed by the version they upgrade *from*.
  * Each takes the raw parsed JSON of version N and returns version N+1.
- * None yet: schemaVersion 1 is the first version.
  */
-const configMigrations: Record<number, (raw: Record<string, unknown>) => Record<string, unknown>> = {};
+const configMigrations: Record<number, (raw: Obj) => Obj> = {
+  // v2: asset "manifests" were renamed to asset "pools".
+  1: (raw) => {
+    const data = renameKey(raw, 'assetManifests', 'assetPools');
+    if (!Array.isArray(data.frames)) return data;
+    return {
+      ...data,
+      frames: data.frames.map((f: unknown) =>
+        isObj(f) && Array.isArray(f.playlist)
+          ? { ...f, playlist: f.playlist.map((item: unknown) => (isObj(item) ? renameKey(item, 'manifest', 'pool') : item)) }
+          : f,
+      ),
+    };
+  },
+};
 
 /** Upgrade raw parsed config JSON to the current schema version (validation happens in configIO). */
 export function migrateConfigJson(raw: Record<string, unknown>): Record<string, unknown> {

@@ -2,9 +2,10 @@
  * Manual show: per-frame playlists. Pure functions; the scheduler owns playback state.
  */
 import type { AssetEntry, PlaylistItem } from '../state/schema';
-import type { PoolMode } from './assetPool';
+import type { FrameMode } from './selection';
 
-export type EntryStatus = 'ok' | 'missing' | 'error';
+/** wallOnly: the asset is marked wall only, and this playlist is a frame's. */
+export type EntryStatus = 'ok' | 'missing' | 'error' | 'wallOnly';
 
 export interface PlaylistEntry {
   /** Runtime key of the playlist entry (stable through reorders). */
@@ -15,26 +16,30 @@ export interface PlaylistEntry {
 }
 
 /**
- * Resolve playlist items to assets: by manifest path, then the first asset with that filepath.
+ * Resolve playlist items to assets: by pool path, then the first asset with that filepath.
  * Items whose asset is not found are 'missing'; assets that failed to load are 'error'.
+ * A frame's playlist (`forWall` false) skips assets marked wall only ('wallOnly'), using a
+ * copy of the same file that isn't marked if the pool lists one.
  */
 export function resolvePlaylist(
   items: readonly Readonly<PlaylistItem>[],
   keys: readonly number[],
-  manifests: readonly { path: string; assets: readonly { uid: string; entry: Readonly<AssetEntry> }[] }[],
+  pools: readonly { path: string; assets: readonly { uid: string; entry: Readonly<AssetEntry> }[] }[],
   errors: Readonly<Record<string, string>>,
+  forWall = false,
 ): PlaylistEntry[] {
   return items.map((item, i) => {
     const key = keys[i] ?? -1 - i;
-    const asset = manifests.find((m) => m.path === item.manifest)?.assets.find((a) => a.entry.filepath === item.filepath);
-    if (!asset) return { key, uid: null, status: 'missing' };
+    const matches = pools.find((m) => m.path === item.pool)?.assets.filter((a) => a.entry.filepath === item.filepath) ?? [];
+    const asset = forWall ? matches[0] : matches.find((a) => !a.entry.wallOnly);
+    if (!asset) return { key, uid: null, status: matches.length ? 'wallOnly' : 'missing' };
     if (errors[asset.uid] !== undefined) return { key, uid: null, status: 'error' };
     return { key, uid: asset.uid, status: 'ok' };
   });
 }
 
 /** A frame's mode from its playable entries: none → black, one → static, more → cycle in order. */
-export function playlistMode(entries: readonly PlaylistEntry[]): PoolMode {
+export function playlistMode(entries: readonly PlaylistEntry[]): FrameMode {
   const playable = entries.reduce((n, e) => n + (e.uid ? 1 : 0), 0);
   if (playable === 0) return 'empty';
   return playable === 1 ? 'static' : 'cycling';

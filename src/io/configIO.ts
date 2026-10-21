@@ -4,13 +4,12 @@ import {
   CONFIG_SCHEMA_VERSION,
   type Config,
   type Corners,
-  type EffectLayerConfig,
-  type EffectParamValue,
   type FrameConfig,
-  type Inset,
   type NormPoint,
   type PlaylistItem,
   SHOW_TYPES,
+  TRANSITION_IN_STYLES,
+  type TransitionInStyle,
   BLEND_MODES,
   type BlendMode,
   type ShowType,
@@ -80,13 +79,13 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     return (v as number[][]).map((p) => [p[0]!, p[1]!] as NormPoint) as Corners;
   };
 
-  // assetManifests
-  let assetManifests = d.assetManifests;
-  if (data.assetManifests !== undefined) {
-    if (Array.isArray(data.assetManifests) && data.assetManifests.every((p) => typeof p === 'string')) {
-      assetManifests = data.assetManifests as string[];
+  // assetPools
+  let assetPools = d.assetPools;
+  if (data.assetPools !== undefined) {
+    if (Array.isArray(data.assetPools) && data.assetPools.every((p) => typeof p === 'string')) {
+      assetPools = data.assetPools as string[];
     } else {
-      warnings.push('assetManifests must be an array of paths; ignoring.');
+      warnings.push('assetPools must be an array of paths; ignoring.');
     }
   }
 
@@ -117,11 +116,30 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     },
   };
 
+  /** A frame's or the wall's playlist: an array of { pool, filepath }; bad entries are skipped. */
+  const playlistOf = (raw: unknown, path: string): PlaylistItem[] => {
+    const playlist: PlaylistItem[] = [];
+    if (raw === undefined) return playlist;
+    if (!Array.isArray(raw)) {
+      warnings.push(`${path}.playlist must be an array; using an empty playlist.`);
+      return playlist;
+    }
+    raw.forEach((item, j) => {
+      if (isObj(item) && typeof item.pool === 'string' && typeof item.filepath === 'string') {
+        playlist.push({ pool: item.pool, filepath: item.filepath });
+      } else {
+        warnings.push(`${path}.playlist[${j}] must be { "pool": string, "filepath": string }; skipped.`);
+      }
+    });
+    return playlist;
+  };
+
   // wallQuad
   const w = obj(data, 'wallQuad', 'config');
   const wallQuad: Config['wallQuad'] = {
     corners: corners(w.corners, d.wallQuad.corners, 'wallQuad.corners'),
     debugColor: color(w, 'debugColor', d.wallQuad.debugColor, 'wallQuad'),
+    playlist: playlistOf(w.playlist, 'wallQuad'),
   };
 
   // frames
@@ -143,27 +161,7 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           id = generateFrameId(frames.map((f) => f.id));
           warnings.push(`${path}.id missing or duplicate; assigned ${id}.`);
         }
-        const ins = obj(rawFrame, 'inset', path);
-        const inset: Inset = {
-          top: num(ins, 'top', 0, `${path}.inset`, { min: 0 }),
-          right: num(ins, 'right', 0, `${path}.inset`, { min: 0 }),
-          bottom: num(ins, 'bottom', 0, `${path}.inset`, { min: 0 }),
-          left: num(ins, 'left', 0, `${path}.inset`, { min: 0 }),
-        };
-        const playlist: PlaylistItem[] = [];
-        if (rawFrame.playlist !== undefined) {
-          if (!Array.isArray(rawFrame.playlist)) {
-            warnings.push(`${path}.playlist must be an array; using an empty playlist.`);
-          } else {
-            rawFrame.playlist.forEach((item, j) => {
-              if (isObj(item) && typeof item.manifest === 'string' && typeof item.filepath === 'string') {
-                playlist.push({ manifest: item.manifest, filepath: item.filepath });
-              } else {
-                warnings.push(`${path}.playlist[${j}] must be { "manifest": string, "filepath": string }; skipped.`);
-              }
-            });
-          }
-        }
+        const playlist = playlistOf(rawFrame.playlist, path);
         let blend: BlendMode = fallback.blend;
         if (rawFrame.blend !== undefined) {
           if (BLEND_MODES.includes(rawFrame.blend as BlendMode)) blend = rawFrame.blend as BlendMode;
@@ -176,7 +174,6 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           debugColor: color(rawFrame, 'debugColor', fallback.debugColor, path),
           captionSpacing: num(rawFrame, 'captionSpacing', fallback.captionSpacing, path),
           captionOffsetX: num(rawFrame, 'captionOffsetX', fallback.captionOffsetX, path),
-          inset,
           playlist,
           blend,
         });
@@ -187,7 +184,13 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
   // animation
   const a = obj(data, 'animation', 'config');
   const da = d.animation;
+  let transitionInStyle = da.transitionInStyle;
+  if (a.transitionInStyle !== undefined) {
+    if (TRANSITION_IN_STYLES.includes(a.transitionInStyle as TransitionInStyle)) transitionInStyle = a.transitionInStyle as TransitionInStyle;
+    else warnings.push(`animation.transitionInStyle must be ${TRANSITION_IN_STYLES.map((t) => `"${t}"`).join(' or ')}; using "${da.transitionInStyle}".`);
+  }
   const animation: Config['animation'] = {
+    transitionInStyle,
     cycleDuration: num(a, 'cycleDuration', da.cycleDuration, 'animation', { positive: true }),
     transitionInDuration: num(a, 'transitionInDuration', da.transitionInDuration, 'animation', { min: 0 }),
     transitionOutDuration: num(a, 'transitionOutDuration', da.transitionOutDuration, 'animation', { min: 0 }),
@@ -214,24 +217,10 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     lineTwoDelay: num(c, 'lineTwoDelay', dc.lineTwoDelay, 'captions', { min: 0 }),
   };
 
-  // effects
-  const e = obj(data, 'effects', 'config');
-  const layer = (key: 'back' | 'front'): EffectLayerConfig => {
-    const l = obj(e, key, 'effects');
-    const def = d.effects[key];
-    const type = typeof l.type === 'string' && l.type !== '' ? l.type : def.type;
-    const params: Record<string, EffectParamValue> = {};
-    for (const [k, v] of Object.entries(obj(l, 'params', `effects.${key}`))) {
-      if (isNum(v) || typeof v === 'string' || typeof v === 'boolean') params[k] = v;
-      else warnings.push(`effects.${key}.params.${k} has an unsupported type; dropped.`);
-    }
-    return { type, params };
-  };
-
   return {
     config: {
       schemaVersion: CONFIG_SCHEMA_VERSION,
-      assetManifests,
+      assetPools,
       showType,
       ui: { panelSide },
       global,
@@ -239,7 +228,6 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
       frames,
       animation,
       captions,
-      effects: { back: layer('back'), front: layer('front') },
     },
     warnings,
   };

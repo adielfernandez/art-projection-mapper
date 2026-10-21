@@ -11,7 +11,8 @@ describe('parseConfig', () => {
     cfg.frames[0]!.corners[0] = [0.1234567890123456, 0.98765432109876];
     cfg.frames[1]!.corners[2] = [1 / 3, 2 / 7];
     cfg.wallQuad.corners[1] = [0.9999999999999, 0.0000001];
-    cfg.effects.back.params = { speed: 0.5, mode: 'soft', on: true };
+    cfg.animation.transitionInStyle = 'fade';
+    cfg.wallQuad.playlist = [{ pool: 'walls.json', filepath: 'media/damask.jpg' }];
     const { config, warnings } = parseConfig(JSON.parse(serializeConfig(cfg)), ASPECT);
     expect(warnings).toEqual([]);
     expect(config).toEqual(cfg);
@@ -19,8 +20,8 @@ describe('parseConfig', () => {
 
   it('parses the example config from the brief', () => {
     const raw = {
-      schemaVersion: 1,
-      assetManifests: ['pools/paintings.json', 'pools/videos.json'],
+      schemaVersion: 2,
+      assetPools: ['pools/paintings.json', 'pools/videos.json'],
       ui: { panelSide: 'left' },
       global: { backgroundColor: '#000000', debug: { strokeWidth: 2, pointRadius: 14, crosshairSize: 22 } },
       wallQuad: { corners: [[0, 0], [1, 0], [1, 1], [0, 1]], debugColor: '#0A84FF' },
@@ -31,7 +32,7 @@ describe('parseConfig', () => {
           physicalAspect: 0.6571,
           debugColor: '#FF453A',
           captionSpacing: 0.05,
-          inset: { top: 0, right: 0, bottom: 0, left: 0 },
+          inset: { top: 0, right: 0, bottom: 0, left: 0 }, // no longer used: ignored
         },
       ],
     };
@@ -39,7 +40,7 @@ describe('parseConfig', () => {
     expect(warnings).toEqual([]);
     expect(config.frames).toHaveLength(1);
     expect(config.frames[0]!.id).toBe('f_8k2j1');
-    expect(config.assetManifests).toEqual(raw.assetManifests);
+    expect(config.assetPools).toEqual(raw.assetPools);
     // Missing sections fall back to defaults silently.
     expect(config.animation).toEqual(defaultConfig(ASPECT).animation);
   });
@@ -47,7 +48,7 @@ describe('parseConfig', () => {
   it('falls back to defaults with warnings for invalid fields', () => {
     const { config, warnings } = parseConfig(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         global: { backgroundColor: 'red', debug: { strokeWidth: -1 } },
         frames: [
           { id: 'a', corners: [[0, 0]], physicalAspect: 'tall' },
@@ -68,7 +69,7 @@ describe('parseConfig', () => {
 
   it('fills transitionDelay and the dissolve settings for configs saved before they existed', () => {
     const old = { cycleDuration: 8, transitionInDuration: 2, transitionOutDuration: 1, frameStagger: 3 };
-    const { config, warnings } = parseConfig({ schemaVersion: 1, animation: old }, ASPECT);
+    const { config, warnings } = parseConfig({ schemaVersion: 2, animation: old }, ASPECT);
     expect(warnings).toEqual([]);
     expect(config.animation.cycleDuration).toBe(8);
     expect(config.animation.transitionDelay).toBe(0.5);
@@ -76,7 +77,7 @@ describe('parseConfig', () => {
     expect(config.animation.dissolveNoiseScale).toBe(1);
 
     const parsed = parseConfig(
-      { schemaVersion: 1, animation: { transitionDelay: 0, dissolveSoftness: 0, dissolveNoiseScale: -2 } },
+      { schemaVersion: 2, animation: { transitionDelay: 0, dissolveSoftness: 0, dissolveNoiseScale: -2 } },
       ASPECT,
     );
     expect(parsed.config.animation.transitionDelay).toBe(0); // no black hold is valid
@@ -90,14 +91,14 @@ describe('parseConfig', () => {
     cfg.showType = 'manual';
     cfg.frames[1]!.blend = 'add';
     cfg.frames[0]!.playlist = [
-      { manifest: 'assets.json', filepath: 'media/a.jpg' },
-      { manifest: 'assets.json', filepath: 'media/a.jpg' }, // duplicates are allowed
+      { pool: 'assets.json', filepath: 'media/a.jpg' },
+      { pool: 'assets.json', filepath: 'media/a.jpg' }, // duplicates are allowed
     ];
     const round = parseConfig(JSON.parse(serializeConfig(cfg)), ASPECT);
     expect(round.warnings).toEqual([]);
     expect(round.config).toEqual(cfg);
 
-    const old = parseConfig({ schemaVersion: 1, frames: [{ id: 'x' }] }, ASPECT);
+    const old = parseConfig({ schemaVersion: 2, frames: [{ id: 'x' }] }, ASPECT);
     expect(old.warnings).toEqual([]);
     expect(old.config.showType).toBe('randomized');
     expect(old.config.frames[0]!.playlist).toEqual([]);
@@ -107,24 +108,63 @@ describe('parseConfig', () => {
   it('falls back with warnings for an invalid showType, blend and malformed playlist entries', () => {
     const { config, warnings } = parseConfig(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         showType: 'shuffle',
         frames: [
-          { id: 'a', playlist: [{ manifest: 'm.json', filepath: 'x.jpg' }, { filepath: 'y.jpg' }, 'z.jpg'] },
+          { id: 'a', playlist: [{ pool: 'm.json', filepath: 'x.jpg' }, { filepath: 'y.jpg' }, 'z.jpg'] },
           { id: 'b', playlist: 'nope', blend: 'screen' },
         ],
       },
       ASPECT,
     );
     expect(config.showType).toBe('randomized');
-    expect(config.frames[0]!.playlist).toEqual([{ manifest: 'm.json', filepath: 'x.jpg' }]);
+    expect(config.frames[0]!.playlist).toEqual([{ pool: 'm.json', filepath: 'x.jpg' }]);
     expect(config.frames[1]!.playlist).toEqual([]);
     expect(config.frames[1]!.blend).toBe('normal');
     expect(warnings).toHaveLength(5);
   });
 
+  it('migrates v1 configs: assetManifests → assetPools and playlist "manifest" → "pool"', () => {
+    const { config, warnings } = parseConfig(
+      {
+        schemaVersion: 1,
+        assetManifests: ['art.json', 'videos.json'],
+        frames: [
+          { id: 'a', playlist: [{ manifest: 'art.json', filepath: 'media/a.jpg' }, { manifest: 'videos.json', filepath: 'media/b.mp4' }] },
+          { id: 'b' },
+        ],
+      },
+      ASPECT,
+    );
+    expect(warnings).toEqual([]);
+    expect(config.assetPools).toEqual(['art.json', 'videos.json']);
+    expect(config.frames[0]!.playlist).toEqual([
+      { pool: 'art.json', filepath: 'media/a.jpg' },
+      { pool: 'videos.json', filepath: 'media/b.mp4' },
+    ]);
+    const saved = JSON.parse(serializeConfig(config));
+    expect(saved.schemaVersion).toBe(2);
+    expect(saved.assetManifests).toBeUndefined();
+    expect(saved.assetPools).toEqual(['art.json', 'videos.json']);
+  });
+
+  it('defaults the transition-in style and wall playlist, and warns on bad values', () => {
+    const old = parseConfig({ schemaVersion: 2, effects: { back: { type: 'x', params: {} } } }, ASPECT);
+    expect(old.warnings).toEqual([]); // the old "effects" section is ignored
+    expect(old.config.animation.transitionInStyle).toBe('noise');
+    expect(old.config.wallQuad.playlist).toEqual([]);
+    expect('effects' in old.config).toBe(false);
+    const bad = parseConfig(
+      { schemaVersion: 2, animation: { transitionInStyle: 'wipe' }, wallQuad: { playlist: [{ pool: 'a.json', filepath: 'x.jpg' }, 7] } },
+      ASPECT,
+    );
+    expect(bad.config.animation.transitionInStyle).toBe('noise');
+    expect(bad.config.wallQuad.playlist).toEqual([{ pool: 'a.json', filepath: 'x.jpg' }]);
+    expect(bad.warnings).toHaveLength(2);
+  });
+
   it('accepts an empty frame list', () => {
-    expect(parseConfig({ schemaVersion: 1, frames: [] }, ASPECT).config.frames).toEqual([]);
+    expect(parseConfig({ schemaVersion: 2, frames: [] }, ASPECT).config.frames).toEqual([]);
   });
 
   it('rejects non-objects and newer schema versions', () => {

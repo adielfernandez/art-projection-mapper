@@ -1,16 +1,17 @@
-import { quadIsValid } from '../math/geometry';
+import { quadIsValid, rotateQuadClockwise } from '../math/geometry';
 import type { Quad } from '../math/homography';
 import { newFrame } from './defaults';
 import {
   WALL_QUAD_ID,
   type AnimationConfig,
   type AssetEntry,
+  type AssetRecord,
   type CaptionConfig,
   type Config,
   type Corners,
   type DebugStyle,
   type FrameConfig,
-  type ManifestRecord,
+  type PoolRecord,
   type NormPoint,
   type PanelSide,
   type PlaylistItem,
@@ -47,7 +48,7 @@ export interface RuntimeState {
   ioMessage: IoMessage | null;
   /** Latest asset save status for the Assets section. */
   assetMessage: IoMessage | null;
-  /** Media load errors by asset uid. Flagged assets are excluded from the pool. */
+  /** Media load errors by asset uid. Flagged assets are never played. */
   assetErrors: Record<string, string>;
 }
 
@@ -70,7 +71,7 @@ export interface StoreEvent {
   config: boolean;
   runtime: boolean;
   viewport: boolean;
-  /** Manifests, asset entries or asset errors changed. */
+  /** Pools, asset entries or asset errors changed. */
   assets: boolean;
 }
 
@@ -79,7 +80,7 @@ export type Listener = (e: StoreEvent) => void;
 /** Homomorphic, so tuples (e.g. corner points) stay tuples. */
 export type DeepReadonly<T> = T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T;
 
-export type FrameSettings = Partial<Pick<FrameConfig, 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'captionOffsetX' | 'inset' | 'blend'>>;
+export type FrameSettings = Partial<Pick<FrameConfig, 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'captionOffsetX' | 'blend'>>;
 
 interface PointChange {
   index: CornerIndex;
@@ -108,7 +109,7 @@ function samePoint(a: PointRef | null, b: PointRef | null): boolean {
 export class Store {
   private _config: Config;
   private _runtime: RuntimeState;
-  private _manifests: ManifestRecord[] = [];
+  private _pools: PoolRecord[] = [];
   private listeners = new Set<Listener>();
   private undoStack: MappingEdit[] = [];
   private redoStack: MappingEdit[] = [];
@@ -149,9 +150,9 @@ export class Store {
     return this._runtime;
   }
 
-  /** Manifest portion of the project state. */
-  get manifests(): DeepReadonly<ManifestRecord[]> {
-    return this._manifests;
+  /** Pool portion of the project state. */
+  get pools(): DeepReadonly<PoolRecord[]> {
+    return this._pools;
   }
 
   subscribe(fn: Listener): () => void {
@@ -196,17 +197,31 @@ export class Store {
     return this.redoStack.length > 0;
   }
 
-  findAsset(uid: string): { manifest: DeepReadonly<ManifestRecord>; entry: DeepReadonly<AssetEntry> } | null {
-    for (const m of this._manifests) {
+  findAsset(uid: string): { pool: DeepReadonly<PoolRecord>; entry: DeepReadonly<AssetEntry> } | null {
+    for (const m of this._pools) {
       const a = m.assets.find((x) => x.uid === uid);
-      if (a) return { manifest: m, entry: a.entry };
+      if (a) return { pool: m, entry: a.entry };
     }
     return null;
   }
 
-  /** Snapshot of one manifest, for saving. */
-  manifestSnapshot(path: string): ManifestRecord | null {
-    const m = this._manifests.find((x) => x.path === path);
+  /** Frames (and the wall, as WALL_QUAD_ID) whose playlist lists this asset, by pool and filepath. */
+  framesUsingAsset(uid: string): QuadId[] {
+    const found = this.findAsset(uid);
+    if (!found) return [];
+    return this.playlistOwners()
+      .filter((o) => o.playlist.some((item) => item.pool === found.pool.path && item.filepath === found.entry.filepath))
+      .map((o) => o.id);
+  }
+
+  /** Every playlist: each frame's, then the wall's (WALL_QUAD_ID). */
+  private playlistOwners(): { id: QuadId; playlist: PlaylistItem[] }[] {
+    return [...this._config.frames, { id: WALL_QUAD_ID, playlist: this._config.wallQuad.playlist }];
+  }
+
+  /** Snapshot of one pool, for saving. */
+  poolSnapshot(path: string): PoolRecord | null {
+    const m = this._pools.find((x) => x.path === path);
     return m ? structuredClone(m) : null;
   }
 
@@ -253,9 +268,9 @@ export class Store {
 
   // ---------- asset actions ----------
 
-  /** Replace all manifests (project load). Clears asset errors and the assets dirty flag. */
-  setManifests(manifests: ManifestRecord[]): void {
-    this._manifests = structuredClone(manifests);
+  /** Replace all pools (project load). Clears asset errors and the assets dirty flag. */
+  setPools(pools: PoolRecord[]): void {
+    this._pools = structuredClone(pools);
     this._runtime.assetErrors = {};
     this._runtime.assetsDirty = false;
     this._runtime.assetMessage = null;
@@ -263,11 +278,11 @@ export class Store {
   }
 
   /**
-   * Live edit of an asset entry. Marks its manifest modified. A new filepath clears the asset's
+   * Live edit of an asset entry. Marks its pool modified. A new filepath clears the asset's
    * error, and playlist entries pointing at the old filepath follow it (marking the config modified).
    */
   updateAsset(uid: string, patch: Partial<AssetEntry>): void {
-    for (const m of this._manifests) {
+    for (const m of this._pools) {
       const a = m.assets.find((x) => x.uid === uid);
       if (!a) continue;
       const oldPath = a.entry.filepath;
@@ -277,9 +292,9 @@ export class Store {
       if (pathChanged) {
         delete this._runtime.assetErrors[uid];
         let followed = false;
-        for (const f of this._config.frames) {
+        for (const f of this.playlistOwners()) {
           for (const item of f.playlist) {
-            if (item.manifest === m.path && item.filepath === oldPath) {
+            if (item.pool === m.path && item.filepath === oldPath) {
               item.filepath = a.entry.filepath;
               followed = true;
             }
@@ -296,6 +311,66 @@ export class Store {
     }
   }
 
+  /** Append new assets to a pool (marking it modified). */
+  addAssets(poolPath: string, records: readonly AssetRecord[]): void {
+    const m = this._pools.find((x) => x.path === poolPath);
+    if (!m || records.length === 0) return;
+    m.assets.push(...structuredClone(records as AssetRecord[]));
+    m.dirty = true;
+    this._runtime.assetsDirty = true;
+    // In a randomized show the frames play the pools directly, so their test patterns go off.
+    // (The wall only plays its own playlist.)
+    if (this._config.showType === 'randomized') this.hideTestPatterns(this._config.frames.map((f) => f.id));
+    this.emit((e) => (e.assets = e.runtime = true));
+  }
+
+  /**
+   * Remove an asset from its pool (marking it modified). The media file is not touched.
+   * Playlist entries that pointed at it are kept and show as missing.
+   */
+  removeAsset(uid: string): void {
+    for (const m of this._pools) {
+      const i = m.assets.findIndex((x) => x.uid === uid);
+      if (i < 0) continue;
+      m.assets.splice(i, 1);
+      m.dirty = true;
+      delete this._runtime.assetErrors[uid];
+      this._runtime.assetsDirty = true;
+      this.emit((e) => (e.assets = e.runtime = true));
+      return;
+    }
+  }
+
+  /** Add an asset pool to the show: listed in config.assetPools (config modified) and loaded. */
+  addPool(pool: PoolRecord): void {
+    if (this._pools.some((x) => x.path === pool.path)) return;
+    this._pools.push(structuredClone(pool));
+    if (!this._config.assetPools.includes(pool.path)) this._config.assetPools.push(pool.path);
+    if (pool.dirty) this._runtime.assetsDirty = true;
+    this.markConfigDirty();
+    this.emit((e) => (e.assets = e.config = e.runtime = true));
+  }
+
+  /**
+   * Remove an asset pool from the show (dropped from config.assetPools; config modified).
+   * The pool file and its media stay on disk. Playlist entries that used it show as missing.
+   */
+  removePool(path: string): void {
+    const i = this._pools.findIndex((x) => x.path === path);
+    if (i < 0) return;
+    const [removed] = this._pools.splice(i, 1);
+    for (const a of removed!.assets) delete this._runtime.assetErrors[a.uid];
+    this._config.assetPools = this._config.assetPools.filter((p) => p !== path);
+    this._runtime.assetsDirty = this._pools.some((x) => x.dirty);
+    this.markConfigDirty();
+    this.emit((e) => (e.assets = e.config = e.runtime = true));
+  }
+
+  /** Frames (and the wall, as WALL_QUAD_ID) whose playlist lists any asset of this pool. */
+  framesUsingPool(path: string): QuadId[] {
+    return this.playlistOwners().filter((o) => o.playlist.some((item) => item.pool === path)).map((o) => o.id);
+  }
+
   setAssetError(uid: string, message: string | null): void {
     const cur = this._runtime.assetErrors[uid];
     if (message === null ? cur === undefined : cur === message) return;
@@ -304,10 +379,10 @@ export class Store {
     this.emit((e) => (e.assets = e.runtime = true));
   }
 
-  markManifestSaved(path: string): void {
-    const m = this._manifests.find((x) => x.path === path);
+  markPoolSaved(path: string): void {
+    const m = this._pools.find((x) => x.path === path);
     if (m) m.dirty = false;
-    this._runtime.assetsDirty = this._manifests.some((x) => x.dirty);
+    this._runtime.assetsDirty = this._pools.some((x) => x.dirty);
     this.emit((e) => (e.assets = e.runtime = true));
   }
 
@@ -349,6 +424,18 @@ export class Store {
     if (!changed) return;
     this.markConfigDirty();
     this.emit((e) => e.corners.add(quadId));
+  }
+
+  /** Turn a quad 90° clockwise about its center, kept inside the viewport. One undo step. */
+  rotateQuad(quadId: QuadId): void {
+    const corners = this.mutableCorners(quadId);
+    if (!corners) return;
+    const before = corners.map((p) => [p[0], p[1]] as NormPoint);
+    const after = rotateQuadClockwise(before, this._runtime.viewport) as NormPoint[];
+    this.drag = null;
+    this.setCorners(quadId, after);
+    const points: PointChange[] = before.map((b, i) => ({ index: i as CornerIndex, before: b, after: after[i]! }));
+    this.pushEdit({ quadId, points, kind: 'set', time: performance.now() });
   }
 
   /** Set a point as its own undo step (numeric input). */
@@ -440,11 +527,15 @@ export class Store {
   /** Add a frame centered on the canvas at the default size. Returns its id. */
   addFrame(): string {
     const { w, h } = this._runtime.viewport;
+    // While setting up with test patterns showing, a new frame shows its pattern too.
+    const patterns = this.allQuadIds().some((id) => this.isTestPatternOn(id));
     const f = newFrame(0.5, 0.5, w / h, this._config.frames);
     this._config.frames.push(f);
+    if (patterns) this._runtime.testPattern[f.id] = true;
     this.markConfigDirty();
     this.emit((e) => {
       e.frames = true;
+      e.runtime = patterns;
       e.corners.add(f.id);
     });
     return f.id;
@@ -479,7 +570,6 @@ export class Store {
     if (patch.debugColor !== undefined) f.debugColor = patch.debugColor;
     if (patch.captionSpacing !== undefined) f.captionSpacing = patch.captionSpacing;
     if (patch.captionOffsetX !== undefined) f.captionOffsetX = patch.captionOffsetX;
-    if (patch.inset !== undefined) f.inset = { ...patch.inset };
     if (patch.blend !== undefined) f.blend = patch.blend;
     this.markConfigDirty();
     this.emit((e) => (e.frames = true));
@@ -493,8 +583,10 @@ export class Store {
     const keys = this.mutablePlaylistKeys(frameId);
     if (!f || !keys) return;
     const at = index === undefined ? f.playlist.length : Math.max(0, Math.min(f.playlist.length, index));
-    f.playlist.splice(at, 0, { manifest: item.manifest, filepath: item.filepath });
+    f.playlist.splice(at, 0, { pool: item.pool, filepath: item.filepath });
     keys.splice(at, 0, this.nextPlaylistKey++);
+    // Content is arriving: the test pattern would hide it.
+    this.hideTestPatterns([frameId]);
     this.playlistChanged();
   }
 
@@ -598,6 +690,23 @@ export class Store {
     this.emit((e) => (e.runtime = true));
   }
 
+  /** Turn these quads' test patterns off (content was added to them). */
+  private hideTestPatterns(ids: readonly QuadId[]): void {
+    let changed = false;
+    for (const id of ids) {
+      if (!this.isTestPatternOn(id)) continue;
+      this._runtime.testPattern[id] = false;
+      changed = true;
+    }
+    if (changed) this.emit((e) => (e.runtime = true));
+  }
+
+  /** Turn on every quad's test pattern (a new show starts this way, ready for mapping). */
+  showAllTestPatterns(): void {
+    for (const id of this.allQuadIds()) this._runtime.testPattern[id] = true;
+    this.emit((e) => (e.runtime = true));
+  }
+
   setTestPattern(quadId: QuadId, on: boolean): void {
     this._runtime.testPattern[quadId] = on;
     this.emit((e) => (e.runtime = true));
@@ -617,7 +726,9 @@ export class Store {
     return this._config.frames.find((f) => f.id === quadId)?.corners ?? null;
   }
 
-  private mutableFrame(id: QuadId): FrameConfig | null {
+  /** The playlist owner for an id: a frame, or the wall (WALL_QUAD_ID). */
+  private mutableFrame(id: QuadId): { playlist: PlaylistItem[] } | null {
+    if (id === WALL_QUAD_ID) return this._config.wallQuad;
     return this._config.frames.find((f) => f.id === id) ?? null;
   }
 

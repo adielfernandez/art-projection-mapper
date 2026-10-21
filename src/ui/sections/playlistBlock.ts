@@ -1,6 +1,8 @@
 import { resolvePlaylist, type PlaylistEntry } from '../../content/playlist';
-import type { QuadId } from '../../state/schema';
-import { button, h, type Binder } from '../controls';
+import type { ImportResult } from '../../io/projectController';
+import { WALL_QUAD_ID, type QuadId } from '../../state/schema';
+import { button, h, showNote, type Binder } from '../controls';
+import { dropZone } from '../dropZone';
 import type { PanelContext } from './context';
 
 /** How often the "now playing" highlight refreshes (playback doesn't emit store events). */
@@ -9,15 +11,20 @@ const PLAYING_POLL_MS = 400;
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 /**
- * A frame's playlist (manual show): one row per entry with ↑ ↓ ×, plus an asset picker
- * listing every asset in the loaded manifests. Clicking an asset appends it.
+ * A playlist: a frame's (shown in a manual show) or the wall's wallpaper (always shown).
+ * One row per entry with ↑ ↓ ×, plus an asset picker
+ * listing every asset in the loaded pools. Clicking an asset appends it. New files can be
+ * imported from the picker, or dropped on the playlist: they join an asset pool and the playlist.
  */
 export function playlistBlock(ctx: PanelContext, b: Binder, frameId: QuadId): HTMLElement {
-  const { store, thumbs } = ctx;
-  const frame = () => store.config.frames.find((f) => f.id === frameId);
+  const { store, thumbs, project } = ctx;
+  const isWall = frameId === WALL_QUAD_ID;
+  const frame = () => (isWall ? store.config.wallQuad : store.config.frames.find((f) => f.id === frameId));
+  /** The wall plays its playlist in every show type; frames only in a manual show. */
+  const active = () => isWall || store.config.showType === 'manual';
   const entries = (): PlaylistEntry[] => {
     const f = frame();
-    return f ? resolvePlaylist(f.playlist, store.playlistKeys(frameId), store.manifests, store.runtime.assetErrors) : [];
+    return f ? resolvePlaylist(f.playlist, store.playlistKeys(frameId), store.pools, store.runtime.assetErrors, isWall) : [];
   };
 
   const list = h('div', { class: 'playlist' });
@@ -49,7 +56,8 @@ export function playlistBlock(ctx: PanelContext, b: Binder, frameId: QuadId): HT
     listSig = sig;
     rowsByKey.clear();
     if (es.length === 0) {
-      list.replaceChildren(h('div', { class: 'muted', text: 'Empty: this frame stays black in a manual show.' }));
+      const empty = isWall ? 'Empty: no wallpaper; the wall shows the background color.' : 'Empty: this frame stays black in a manual show.';
+      list.replaceChildren(h('div', { class: 'muted', text: empty }));
       return;
     }
     list.replaceChildren(
@@ -57,8 +65,10 @@ export function playlistBlock(ctx: PanelContext, b: Binder, frameId: QuadId): HT
         const item = f.playlist[i]!;
         const thumb = e.uid ? thumbs.slot(e.uid) : h('span', { class: 'thumb', text: '?' });
         if (e.uid) thumbs.request(e.uid);
-        const name = h('span', { class: 'asset-name', text: label(i), title: `${item.manifest} → ${item.filepath}` });
-        const badge = e.status === 'ok' ? null : h('span', { class: 'badge error', text: e.status === 'missing' ? 'missing' : 'failed' });
+        const name = h('span', { class: 'asset-name', text: label(i), title: `${item.pool} → ${item.filepath}` });
+        const BADGES = { missing: 'missing', error: 'failed', wallOnly: 'wall only' } as const;
+        const badge = e.status === 'ok' ? null : h('span', { class: 'badge error', text: BADGES[e.status] });
+        if (e.status === 'wallOnly') badge!.title = 'Marked "Wall only" in the Assets section, so this frame skips it.';
         const up = button('↑', () => store.movePlaylistItem(frameId, i, i - 1), 'small');
         const down = button('↓', () => store.movePlaylistItem(frameId, i, i + 1), 'small');
         const remove = button('×', () => store.removePlaylistItem(frameId, i), 'small danger');
@@ -82,7 +92,7 @@ export function playlistBlock(ctx: PanelContext, b: Binder, frameId: QuadId): HT
   };
 
   const syncPlaying = () => {
-    const key = store.config.showType === 'manual' ? ctx.playback.playingKey(frameId) : null;
+    const key = active() ? ctx.playback.playingKey(frameId) : null;
     for (const [k, row] of rowsByKey) row.classList.toggle('playing', k === key);
   };
   const timer = window.setInterval(() => {
@@ -90,33 +100,86 @@ export function playlistBlock(ctx: PanelContext, b: Binder, frameId: QuadId): HT
     if (store.runtime.panelOpen) syncPlaying();
   }, PLAYING_POLL_MS);
 
+  // ----- import new files: into an asset pool, then onto this playlist -----
+  const usablePools = () => store.pools.filter((m) => !m.error);
+  let chosenPool: string | null = null;
+  /** The chosen pool; null when there is none yet (the import then creates "assets.json"). */
+  const targetPool = () => {
+    const pools = usablePools();
+    return pools.find((m) => m.path === chosenPool)?.path ?? pools[0]?.path ?? null;
+  };
+  const poolSelect = h('select', { class: 'pool-select' });
+  poolSelect.addEventListener('change', () => (chosenPool = poolSelect.value));
+  const intoRow = h('div', { class: 'import-into' }, [h('span', { class: 'muted', text: 'Into asset pool' }), poolSelect]);
+  const importNote = h('div', { class: 'muted' });
+  const importTile = h('button', { class: 'picker-tile import-tile', type: 'button' }, [
+    h('span', { class: 'thumb', text: '+' }),
+    h('span', { class: 'picker-name', text: 'Import new files…' }),
+  ]);
+  importTile.title = 'Choose images or videos from your computer. They join an asset pool and this playlist.';
+  const result = h('div', { class: 'message' });
+  result.hidden = true;
+
+  const addImported = (r: ImportResult | null) => {
+    if (!r) return;
+    let added = 0;
+    for (const uid of r.uids) {
+      const found = store.findAsset(uid);
+      if (!found) continue;
+      store.addToPlaylist(frameId, { pool: found.pool.path, filepath: found.entry.filepath });
+      added++;
+    }
+    const parts = added ? [`Added ${added} to this playlist.`] : [];
+    if (r.skipped.length) parts.push(`Skipped ${r.skipped.length}: ${r.skipped.join('; ')}`);
+    // Fades after a few seconds (skipped files are also listed in the Assets section).
+    if (parts.length) showNote(result, parts.join(' '), r.skipped.length ? 'warn' : 'info', true);
+  };
+  importTile.addEventListener('click', () => void project.pickAndImport(targetPool()).then(addImported));
+  const syncImport = () => {
+    const pools = usablePools();
+    importNote.hidden = pools.length > 0;
+    importNote.textContent = 'New files go into a new asset pool, assets.json.';
+    intoRow.hidden = pools.length < 2;
+    const sig = pools.map((m) => m.path).join('|');
+    if (poolSelect.dataset.sig !== sig) {
+      poolSelect.dataset.sig = sig;
+      poolSelect.replaceChildren(...pools.map((m) => Object.assign(h('option', { text: m.path }), { value: m.path })));
+    }
+    const target = targetPool();
+    if (target) poolSelect.value = target;
+  };
+
   // ----- picker -----
   let pickerSig: string | null = null;
   const rebuildPicker = () => {
     if (picker.hidden) return;
-    const sig = store.manifests
-      .map((m) => `${m.path}:${m.assets.map((a) => `${a.uid}.${a.entry.filepath}.${a.entry.title ?? ''}`).join(',')}`)
+    const sig = store.pools
+      .map((m) => `${m.path}:${m.assets.map((a) => `${a.uid}.${a.entry.filepath}.${a.entry.title ?? ''}.${!!a.entry.wallOnly}`).join(',')}`)
       .join('|');
     if (sig === pickerSig) return;
     pickerSig = sig;
-    const groups = store.manifests.filter((m) => m.assets.length > 0);
+    const importer = [h('div', { class: 'subhead', text: 'New files' }), intoRow, importNote, h('div', { class: 'picker-grid' }, [importTile])];
+    // Frames can't use wall-only assets, so their pickers leave them out.
+    const usable = (a: { entry: { wallOnly?: boolean } }) => isWall || !a.entry.wallOnly;
+    const groups = store.pools.filter((m) => m.assets.some(usable));
     if (groups.length === 0) {
-      picker.replaceChildren(h('div', { class: 'muted', text: 'No assets loaded. Open a project with asset manifests.' }));
+      picker.replaceChildren(...importer, h('div', { class: 'muted', text: 'No assets loaded yet.' }));
       return;
     }
     picker.replaceChildren(
+      ...importer,
       ...groups.flatMap((m) => [
         h('div', { class: 'subhead', text: m.path }),
         h(
           'div',
           { class: 'picker-grid' },
-          m.assets.map((a) => {
+          m.assets.filter(usable).map((a) => {
             const name = a.entry.title?.trim() || fileName(a.entry.filepath);
             const tile = h('button', { class: 'picker-tile', type: 'button', title: `Add "${name}" (${a.entry.filepath})` }, [
               thumbs.slot(a.uid),
               h('span', { class: 'picker-name', text: name }),
             ]);
-            tile.addEventListener('click', () => store.addToPlaylist(frameId, { manifest: m.path, filepath: a.entry.filepath }));
+            tile.addEventListener('click', () => store.addToPlaylist(frameId, { pool: m.path, filepath: a.entry.filepath }));
             thumbs.request(a.uid);
             return tile;
           }),
@@ -126,16 +189,22 @@ export function playlistBlock(ctx: PanelContext, b: Binder, frameId: QuadId): HT
   };
 
   const block = h('div', { class: 'playlist-block' }, [
-    h('div', { class: 'subhead', text: 'Playlist' }),
+    h('div', { class: 'subhead', text: isWall ? 'Wallpaper playlist' : 'Playlist' }),
+    isWall
+      ? h('div', { class: 'muted playlist-note', text: 'Plays behind the frames in either show type. One item stays up; several cycle in order.' })
+      : null,
     list,
+    result,
     addBtn,
     picker,
   ]);
+  dropZone(block, (dt) => void project.importDrop(targetPool(), dt).then(addImported), active);
 
   b.add(() => {
-    // Playlists are kept but hidden in a randomized show.
-    block.hidden = store.config.showType !== 'manual';
+    // Frame playlists are kept but hidden in a randomized show; the wallpaper always shows.
+    block.hidden = !active();
     if (block.hidden) return;
+    syncImport();
     rebuildList();
     rebuildPicker();
   });

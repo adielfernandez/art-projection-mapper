@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /**
  * Frame content shader, in frame-local space (width 1, height 1/physicalAspect):
  * cover-fit/zoom/pan via a UV view rect, a noise-mask dissolve in from black,
- * a fade out to black, and per-edge inset masking (the inset band is black).
+ * and a fade out to black.
  * Output alpha is always 1: normal blending covers what's behind, additive blending
  * (set per frame by the quad layer) adds to it, so black there is transparent.
  */
@@ -20,7 +20,6 @@ const fragment = /* glsl */ `
   uniform sampler2D uTex;
   uniform float uHasTex;
   uniform vec2 uSize;     // local width, height
-  uniform vec4 uInset;    // top, right, bottom, left (local units)
   uniform vec4 uView;     // texture-space center (xy) and span (zw), v up
   uniform float uInvertV;
   uniform float uDecodeSRGB; // 1 = texture holds sRGB values the GPU didn't decode (video)
@@ -29,6 +28,7 @@ const fragment = /* glsl */ `
   uniform float uSeed;
   uniform float uSoftness; // dissolve edge width in noise units
   uniform float uNoiseScale; // blob size; 1 = about five blobs per frame width
+  uniform float uSimpleFade; // 1 = transition in as a plain fade instead of the noise dissolve
   varying vec2 vLocal;
 
   // Unit gradient for a lattice point (sin-free hash, stable at large coordinates).
@@ -76,22 +76,16 @@ const fragment = /* glsl */ `
       // three.js uploads sRGB video as linear RGBA8 and leaves decoding to the shader.
       if (uDecodeSRGB > 0.5) col = sRGBTransferEOTF(vec4(col, 1.0)).rgb;
 
-      // Noise-mask dissolve in. Noise is in physical units so blobs are round on any frame.
-      float n = clamp(0.5 + fbm(p * (5.0 / max(uNoiseScale, 0.01)) + uSeed) * 1.1, 0.0, 1.0);
-      float feather = max(uSoftness, 0.01);
-      float t = uReveal * (1.0 + feather);
-      float reveal = smoothstep(n, n + feather, t);
+      float reveal = uReveal;
+      if (uSimpleFade < 0.5) {
+        // Noise-mask dissolve in. Noise is in physical units so blobs are round on any frame.
+        float n = clamp(0.5 + fbm(p * (5.0 / max(uNoiseScale, 0.01)) + uSeed) * 1.1, 0.0, 1.0);
+        float feather = max(uSoftness, 0.01);
+        float t = uReveal * (1.0 + feather);
+        reveal = smoothstep(n, n + feather, t);
+      }
       col *= reveal * uFade;
     }
-
-    // Inset mask, antialiased over one device pixel.
-    vec2 px = vec2(length(vec2(dFdx(p.x), dFdy(p.x))), length(vec2(dFdx(p.y), dFdy(p.y))));
-    px = max(px, vec2(1e-6));
-    float m = clamp((p.x - uInset.w) / px.x + 0.5, 0.0, 1.0)
-            * clamp((uSize.x - uInset.y - p.x) / px.x + 0.5, 0.0, 1.0)
-            * clamp((p.y - uInset.z) / px.y + 0.5, 0.0, 1.0)
-            * clamp((uSize.y - uInset.x - p.y) / px.y + 0.5, 0.0, 1.0);
-    col *= m;
 
     gl_FragColor = vec4(col, 1.0);
     #include <colorspace_fragment>
@@ -106,7 +100,6 @@ export function createFrameMaterial(): THREE.ShaderMaterial {
       uTex: { value: null },
       uHasTex: { value: 0 },
       uSize: { value: new THREE.Vector2(1, 1) },
-      uInset: { value: new THREE.Vector4(0, 0, 0, 0) },
       uView: { value: new THREE.Vector4(0.5, 0.5, 1, 1) },
       uInvertV: { value: 0 },
       uDecodeSRGB: { value: 0 },
@@ -115,6 +108,7 @@ export function createFrameMaterial(): THREE.ShaderMaterial {
       uSeed: { value: 0 },
       uSoftness: { value: 0.5 },
       uNoiseScale: { value: 1 },
+      uSimpleFade: { value: 0 },
     },
     depthTest: false,
     depthWrite: false,

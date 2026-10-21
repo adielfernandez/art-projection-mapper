@@ -22,7 +22,7 @@ const renderer = new Renderer(glCanvas, store);
 const overlay = new DebugOverlay(overlayCanvas, store);
 const project = new ProjectController(store);
 const scheduler = new Scheduler(store, {
-  getMediaFile: (manifestPath, filepath) => project.getMediaFile(manifestPath, filepath),
+  getMediaFile: (poolPath, filepath) => project.getMediaFile(poolPath, filepath),
   prepareTexture: (tex) => renderer.prepareTexture(tex),
   maxTextureSize: renderer.gl.capabilities.maxTextureSize,
   maxAnisotropy: renderer.gl.capabilities.getMaxAnisotropy(),
@@ -38,8 +38,9 @@ attachHotkeys(store, { togglePanel: () => store.setPanelOpen(!store.runtime.pane
 // Dev builds only: handle for debugging and automated checks from the console.
 if (import.meta.env.DEV) Object.assign(window, { __app: { store, project, scheduler, renderer } });
 
-// Start with the panel open so Load / Reopen are visible.
+// A new show starts with the panel open (so Load / Reopen are visible) and every test pattern on.
 store.setPanelOpen(true);
+store.showAllTestPatterns();
 void project.init();
 
 // Cursor: hidden over the canvas unless the panel is open or debug visuals are shown.

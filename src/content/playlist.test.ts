@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nextEntry, playlistMode, relocateAnchor, resolvePlaylist, START_ANCHOR, type PlaylistEntry } from './playlist';
 
-const manifests = [
+const pools = [
   {
     path: 'assets.json',
     assets: [
@@ -12,17 +12,17 @@ const manifests = [
   },
   { path: 'more.json', assets: [{ uid: 'c', entry: { filepath: 'a.jpg' } }] },
 ];
-const item = (manifest: string, filepath: string) => ({ manifest, filepath });
+const item = (pool: string, filepath: string) => ({ pool, filepath });
 /** Entries with keys 1..n; null uid = unplayable. */
 const entries = (...uids: (string | null)[]): PlaylistEntry[] =>
   uids.map((uid, i) => ({ key: i + 1, uid, status: uid ? 'ok' : 'missing' }));
 
 describe('resolvePlaylist', () => {
-  it('finds assets by manifest and filepath, flagging missing and errored ones', () => {
+  it('finds assets by pool and filepath, flagging missing and errored ones', () => {
     const r = resolvePlaylist(
       [item('assets.json', 'a.jpg'), item('more.json', 'a.jpg'), item('assets.json', 'nope.jpg'), item('gone.json', 'a.jpg'), item('assets.json', 'b.jpg')],
       [10, 11, 12, 13, 14],
-      manifests,
+      pools,
       { b: 'decode failed' },
     );
     expect(r).toEqual([
@@ -32,6 +32,33 @@ describe('resolvePlaylist', () => {
       { key: 13, uid: null, status: 'missing' },
       { key: 14, uid: null, status: 'error' },
     ]);
+  });
+});
+
+describe('resolvePlaylist and wall-only assets', () => {
+  const pools = [
+    {
+      path: 'p.json',
+      assets: [
+        { uid: 'w', entry: { filepath: 'paper.jpg', wallOnly: true } },
+        { uid: 'x1', entry: { filepath: 'dup.jpg', wallOnly: true } },
+        { uid: 'x2', entry: { filepath: 'dup.jpg' } },
+        { uid: 'a', entry: { filepath: 'a.jpg' } },
+      ],
+    },
+  ];
+  const items = [item('p.json', 'paper.jpg'), item('p.json', 'dup.jpg'), item('p.json', 'a.jpg')];
+
+  it('a frame skips wall-only assets, using an unmarked copy of the same file if there is one', () => {
+    expect(resolvePlaylist(items, [1, 2, 3], pools, {})).toEqual([
+      { key: 1, uid: null, status: 'wallOnly' },
+      { key: 2, uid: 'x2', status: 'ok' },
+      { key: 3, uid: 'a', status: 'ok' },
+    ]);
+  });
+
+  it('the wall may use any asset', () => {
+    expect(resolvePlaylist(items, [1, 2, 3], pools, {}, true).map((e) => e.uid)).toEqual(['w', 'x1', 'a']);
   });
 });
 

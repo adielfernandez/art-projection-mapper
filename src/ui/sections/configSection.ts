@@ -7,10 +7,10 @@ export function configSection(ctx: PanelContext): HTMLElement {
 
   const folder = h('div', { class: 'folder' });
   const reopen = button('', () => void project.reopen(confirm), 'primary wide');
-  const load = button('Load…', () => void project.open(confirm));
-  load.title = 'Open a project folder';
-  const save = button('Save', () => void project.save(confirm), 'primary');
-  save.title = 'Write config.json';
+  const load = button('Load Show', () => void project.open(confirm));
+  load.title = 'Open a show (its project folder)';
+  const save = button('Save Show', () => void project.save(confirm), 'primary');
+  save.title = 'Write config.json: mapping, show type, playlists and animation settings. Content is saved in the Assets section.';
   const message = h('div', { class: 'message' });
 
   const showTypeButton = (type: ShowType, label: string) => {
@@ -20,16 +20,16 @@ export function configSection(ctx: PanelContext): HTMLElement {
   };
   const showType = withHelp(
     row('Show type', h('div', { class: 'segmented' }, [showTypeButton('randomized', 'Randomized'), showTypeButton('manual', 'Manual')])),
-    "Randomized: all frames draw from the shared asset pool in shuffled order. Manual: each frame plays its own playlist (in its Mapping section) in order; one asset stays up, an empty playlist stays black. Switching restarts every frame. Saved with the config.",
+    "Randomized: all frames draw from every asset in every asset pool, shuffled. Manual: each frame plays its own playlist (in its Mapping section) in order; one asset stays up, an empty playlist stays black. Switching restarts every frame. Saved with the config.",
   );
 
   binder.add(() => {
     const rt = store.runtime;
-    folder.textContent = rt.folderName ? `Folder: ${rt.folderName}` : 'No project folder open (default project)';
+    folder.textContent = rt.folderName ? `Folder: ${rt.folderName}` : 'New show, not saved yet. Save Show asks where to keep it.';
     folder.classList.toggle('muted', !rt.folderName);
     const canReopen = !!rt.reopenName && rt.reopenName !== rt.folderName;
     reopen.hidden = !canReopen;
-    reopen.textContent = `Reopen project: ${rt.reopenName ?? ''}`;
+    reopen.textContent = `Reopen Show: ${rt.reopenName ?? ''}`;
     load.disabled = save.disabled = !project.supported;
     save.classList.toggle('attention', rt.configDirty);
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { FrameVisual } from '../content/scheduler';
 import type { Quad } from '../math/homography';
-import type { BlendMode, Inset } from '../state/schema';
+import type { BlendMode } from '../state/schema';
 import { QuadCamera } from './quadCamera';
 import { createTestPatternMaterial } from './testPattern';
 import { createFrameMaterial } from './transitionMaterial';
@@ -21,8 +21,12 @@ export class QuadLayer {
   localW = 1;
   localH = 1;
 
-  constructor(accent: string, opts: { content: boolean }) {
+  /** Show nothing (not black) while there is no content: the wall's background stays visible. */
+  private readonly hideWhenEmpty: boolean;
+
+  constructor(accent: string, opts: { content: boolean; hideWhenEmpty?: boolean }) {
     this.content = opts.content ? this.addMesh(createFrameMaterial(), 0) : null;
+    this.hideWhenEmpty = opts.hideWhenEmpty ?? false;
     this.testPattern = this.addMesh(createTestPatternMaterial(accent), 1);
   }
 
@@ -54,10 +58,6 @@ export class QuadLayer {
     this.testPattern.visible = v;
   }
 
-  setInset(inset: Readonly<Inset>): void {
-    this.content?.material.uniforms.uInset!.value.set(inset.top, inset.right, inset.bottom, inset.left);
-  }
-
   /** Additive: black adds no light, so frames drawn earlier show through it. */
   setBlend(mode: BlendMode): void {
     if (this.content) this.content.material.blending = mode === 'add' ? THREE.AdditiveBlending : THREE.NormalBlending;
@@ -65,6 +65,7 @@ export class QuadLayer {
 
   setVisual(v: FrameVisual): void {
     if (!this.content) return;
+    this.content.visible = !this.hideWhenEmpty || v.texture !== null;
     const u = this.content.material.uniforms;
     u.uTex!.value = v.texture;
     u.uHasTex!.value = v.texture ? 1 : 0;
@@ -76,6 +77,7 @@ export class QuadLayer {
     u.uSeed!.value = v.seed;
     u.uSoftness!.value = v.softness;
     u.uNoiseScale!.value = v.noiseScale;
+    u.uSimpleFade!.value = v.simpleFade ? 1 : 0;
   }
 
   render(renderer: THREE.WebGLRenderer): void {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPool, mediaKind, poolMode, staticAssignments } from './assetPool';
+import { mediaKind, playableAssets, randomizedMode, staticAssignments } from './selection';
 import { ShuffleBag } from './shuffleBag';
 
 /** Deterministic PRNG (mulberry32). */
@@ -41,13 +41,13 @@ describe('ShuffleBag', () => {
     }
   });
 
-  it('never shows the same asset in two frames at once when pool > frames', () => {
+  it('never shows the same asset in two frames at once when assets > frames', () => {
     // Simulate frames that each display one asset and preload another, in random order.
-    for (const [frames, poolSize] of [[2, 3], [2, 5], [3, 4], [4, 12], [6, 7]] as const) {
+    for (const [frames, assetCount] of [[2, 3], [2, 5], [3, 4], [4, 12], [6, 7]] as const) {
       for (let seed = 0; seed < 30; seed++) {
         const r = rng(seed * 101 + frames);
         const bag = new ShuffleBag(r);
-        bag.setItems(ids(poolSize));
+        bag.setItems(ids(assetCount));
         const shown: (string | null)[] = Array(frames).fill(null);
         const loading: (string | null)[] = Array(frames).fill(null);
         for (let step = 0; step < 500; step++) {
@@ -87,35 +87,43 @@ describe('ShuffleBag', () => {
   });
 });
 
-describe('pool mode and static assignment', () => {
-  it('selects mode from pool size vs frame count', () => {
-    expect(poolMode(0, 2)).toBe('empty');
-    expect(poolMode(3, 0)).toBe('empty');
-    expect(poolMode(1, 2)).toBe('static');
-    expect(poolMode(2, 2)).toBe('static');
-    expect(poolMode(3, 2)).toBe('cycling');
+describe('randomized mode and static assignment', () => {
+  it('selects mode from asset count vs frame count', () => {
+    expect(randomizedMode(0, 2)).toBe('empty');
+    expect(randomizedMode(3, 0)).toBe('empty');
+    expect(randomizedMode(1, 2)).toBe('static');
+    expect(randomizedMode(2, 2)).toBe('static');
+    expect(randomizedMode(3, 2)).toBe('cycling');
   });
 
-  it('wraps assets in list order when pool < frames', () => {
+  it('wraps assets in list order when assets < frames', () => {
     const m = staticAssignments(['A', 'B'], ['f1', 'f2', 'f3']);
     expect([...m.values()]).toEqual(['A', 'B', 'A']);
   });
 
-  it('assigns asset i to frame i when pool = frames', () => {
+  it('assigns asset i to frame i when assets = frames', () => {
     const m = staticAssignments(['A', 'B', 'C'], ['f1', 'f2', 'f3']);
     expect([...m.entries()]).toEqual([['f1', 'A'], ['f2', 'B'], ['f3', 'C']]);
   });
 
-  it('builds the pool in manifest order, skipping assets with errors, keeping duplicates', () => {
+  it('leaves wall-only assets out of the frames\' shuffle', () => {
+    const playable = playableAssets(
+      [{ path: 'm.json', assets: [{ uid: 'u1', entry: { filepath: 'a.jpg' } }, { uid: 'u2', entry: { filepath: 'w.jpg', wallOnly: true } }, { uid: 'u3', entry: { filepath: 'b.jpg', wallOnly: false } }] }],
+      {},
+    );
+    expect(playable.map((p) => p.uid)).toEqual(['u1', 'u3']);
+  });
+
+  it('lists playable assets in pool order, skipping assets with errors, keeping duplicates', () => {
     const entry = (filepath: string) => ({ filepath });
-    const pool = buildPool(
+    const playable = playableAssets(
       [
         { path: 'p1.json', assets: [{ uid: 'u1', entry: entry('a.jpg') }, { uid: 'u2', entry: entry('b.jpg') }] },
         { path: 'p2.json', assets: [{ uid: 'u3', entry: entry('a.jpg') }, { uid: 'u4', entry: entry('c.mp4') }] },
       ],
       { u2: 'missing' },
     );
-    expect(pool.map((p) => p.uid)).toEqual(['u1', 'u3', 'u4']);
+    expect(playable.map((p) => p.uid)).toEqual(['u1', 'u3', 'u4']);
   });
 
   it('infers media kind from the extension', () => {

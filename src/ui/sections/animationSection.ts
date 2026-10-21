@@ -1,10 +1,20 @@
-import type { AnimationConfig, CaptionConfig } from '../../state/schema';
-import { colorRow, h, section, sliderRow, withHelp, type SliderOpts } from '../controls';
+import type { AnimationConfig, CaptionConfig, TransitionInStyle } from '../../state/schema';
+import { colorRow, h, section, selectRow, sliderRow, withHelp, type SliderOpts } from '../controls';
 import type { PanelContext } from './context';
 
 type Range = Omit<SliderOpts, 'get' | 'set'>;
 
+/** Numeric animation settings (each gets a slider). */
+type AnimationNumberKey = Exclude<keyof AnimationConfig, 'transitionInStyle'>;
+
+const TRANSITION_IN_OPTIONS: readonly (readonly [TransitionInStyle, string])[] = [
+  ['fade', 'Simple Fade'],
+  ['noise', 'Noise Dissolve'],
+];
+
 const ANIMATION_HELP: Record<keyof AnimationConfig, string> = {
+  transitionInStyle:
+    'How a new artwork appears. Simple Fade: the whole frame fades up from black. Noise Dissolve: the artwork appears through soft, spreading blotches.',
   cycleDuration:
     'How long each artwork holds, fully visible, between its transitions. Also the cutoff for videos shorter than this (they loop until it elapses).',
   transitionInDuration: 'Length of the noise dissolve from black when a new artwork appears. Pan and zoom already move during it.',
@@ -38,7 +48,7 @@ const CAPTION_HELP: Record<keyof CaptionConfig, string> = {
 export function animationSection(ctx: PanelContext): HTMLElement {
   const { store, binder } = ctx;
 
-  const anim = (key: keyof AnimationConfig, label: string, r: Range) =>
+  const anim = (key: AnimationNumberKey, label: string, r: Range) =>
     withHelp(
       sliderRow(binder, label, {
         ...r,
@@ -60,7 +70,23 @@ export function animationSection(ctx: PanelContext): HTMLElement {
   const sec = { min: 0, step: 0.1, decimals: 2 };
   const fw = { step: 0.001, decimals: 4 };
 
+  const style = withHelp(
+    selectRow(binder, 'Style', TRANSITION_IN_OPTIONS, () => store.config.animation.transitionInStyle, (v) => store.setAnimation({ transitionInStyle: v })),
+    ANIMATION_HELP.transitionInStyle,
+  );
+  const softness = anim('dissolveSoftness', 'Dissolve softness', { min: 0.01, step: 0.01, decimals: 2, sliderMin: 0.01, sliderMax: 4 });
+  const noiseScale = anim('dissolveNoiseScale', 'Noise Scale', { min: 0.05, step: 0.05, decimals: 2, sliderMin: 0.25, sliderMax: 8 });
+  binder.add(() => {
+    const noise = store.config.animation.transitionInStyle === 'noise';
+    softness.hidden = !noise;
+    noiseScale.hidden = !noise;
+  });
+
   return section(ctx.openState, 'animation', 'Animation', [
+    h('div', { class: 'subhead', text: 'Transition-In Style' }),
+    style,
+    softness,
+    noiseScale,
     h('div', { class: 'subhead', text: 'Timing (seconds)' }),
     anim('cycleDuration', 'Cycle duration', { ...sec, min: 0.5, sliderMin: 1, sliderMax: 60 }),
     anim('transitionInDuration', 'Transition in', { ...sec, sliderMin: 0, sliderMax: 10 }),
@@ -68,9 +94,6 @@ export function animationSection(ctx: PanelContext): HTMLElement {
     anim('transitionDelay', 'Transition delay', { ...sec, sliderMin: 0, sliderMax: 5 }),
     anim('frameStagger', 'Frame stagger', { ...sec, sliderMin: 0, sliderMax: 30 }),
     anim('maxHoldDuration', 'Max hold (pan)', { ...sec, min: 0.5, sliderMin: 1, sliderMax: 120 }),
-    h('div', { class: 'subhead', text: 'Dissolve' }),
-    anim('dissolveSoftness', 'Dissolve softness', { min: 0.01, step: 0.01, decimals: 2, sliderMin: 0.01, sliderMax: 4 }),
-    anim('dissolveNoiseScale', 'Transition noise scale', { min: 0.05, step: 0.05, decimals: 2, sliderMin: 0.25, sliderMax: 8 }),
     h('div', { class: 'subhead', text: 'Motion' }),
     anim('zoomStart', 'Zoom start', { min: 1, step: 0.01, decimals: 3, sliderMin: 1, sliderMax: 2 }),
     anim('panSpeed', 'Pan speed (fw/s)', { min: 0.001, step: 0.001, decimals: 4, sliderMin: 0.001, sliderMax: 0.2 }),
@@ -86,7 +109,5 @@ export function animationSection(ctx: PanelContext): HTMLElement {
       colorRow(binder, 'Caption color', () => store.config.captions.color, (v) => store.setCaptions({ color: v })),
       CAPTION_HELP.color,
     ),
-    h('div', { class: 'subhead', text: 'Effects' }),
-    h('div', { class: 'muted', text: 'Effect layers and their parameters arrive in M5.' }),
   ]);
 }

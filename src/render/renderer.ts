@@ -26,7 +26,7 @@ export class Renderer {
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.gl.autoClear = false;
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
-    this.wall = new QuadLayer(store.config.wallQuad.debugColor, { content: false });
+    this.wall = new QuadLayer(store.config.wallQuad.debugColor, { content: true, hideWhenEmpty: true });
     this.captions = new CaptionRenderer(store);
     this.resize();
     this.syncFrames();
@@ -59,7 +59,9 @@ export class Renderer {
     const gl = this.gl;
     gl.setClearColor(this.clearColor.set(this.store.config.global.backgroundColor), 1);
     gl.clear(true, true, true);
-    // 2. Back effect layer (M5). Wall test pattern draws in wall space here.
+    // 2. Wall: its wallpaper playlist and test pattern, in wall space.
+    const vp = this.store.runtime.viewport;
+    if (this.visualSource) this.wall.setVisual(this.visualSource(WALL_QUAD_ID, vp.w / vp.h));
     this.wall.render(gl);
     // 3. Frames
     for (const f of this.store.config.frames) {
@@ -71,7 +73,6 @@ export class Renderer {
     // 4. Captions, in wall space
     this.captions.update(this.wall.quadCam.homography);
     this.captions.render(gl, this.wall.quadCam.camera);
-    // 5. Front effect layer (M5)
   }
 
   private onChange(e: StoreEvent): void {
@@ -99,7 +100,6 @@ export class Renderer {
         this.frames.set(f.id, layer);
       }
       layer.setAccent(f.debugColor);
-      layer.setInset(f.inset);
       layer.setBlend(f.blend);
     }
     this.wall.setAccent(this.store.config.wallQuad.debugColor);

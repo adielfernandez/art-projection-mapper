@@ -44,6 +44,12 @@ export function attachHotkeys(store: Store, handlers: HotkeyHandlers = {}): void
       handlers.togglePanel?.();
       return;
     }
+    if (key === ' ') {
+      // Always pause/play, even with a panel button or checkbox focused (Space would click it).
+      e.preventDefault();
+      if (!e.repeat) store.setPaused(!store.runtime.paused);
+      return;
+    }
 
     // Point editing keys only act while debug visuals are shown.
     if (!store.runtime.debugVisible) return;
@@ -66,8 +72,10 @@ export function attachHotkeys(store: Store, handlers: HotkeyHandlers = {}): void
     }
   });
 
-  // Alt alone can move focus to browser chrome on Windows; swallow it.
   window.addEventListener('keyup', (e) => {
+    // Alt alone can move focus to browser chrome on Windows; swallow it.
     if (e.key === 'Alt') e.preventDefault();
+    // Buttons and checkboxes act on Space's keyup; Space is the pause key instead.
+    if (e.key === ' ' && !isTypingTarget(document.activeElement)) e.preventDefault();
   });
 }

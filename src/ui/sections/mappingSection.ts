@@ -1,10 +1,9 @@
 import { WALL_QUAD_ID, type QuadId } from '../../state/schema';
 import { CORNER_NAMES, type CornerIndex } from '../../state/store';
-import { Binder, button, checkboxRow, colorRow, h, numberInput, numberRow, section, sliderRow, withHelp } from '../controls';
+import { Binder, button, checkboxRow, colorCheckRow, colorRow, h, numberInput, numberRow, section, sliderRow, withHelp } from '../controls';
 import type { PanelContext } from './context';
 import { playlistBlock } from './playlistBlock';
 
-const INSET_MAX = 0.2;
 /** Caption X offset slider spans ± this many frame widths (the number field accepts any value). */
 const CAPTION_X_RANGE = 0.5;
 
@@ -31,10 +30,11 @@ export function mappingSection(ctx: PanelContext): HTMLElement {
 
   // ----- Wall quad -----
   const wall = section(ctx.openState, 'wall', quadTitle('Wall quad', () => store.config.wallQuad.debugColor, binder), [
-    pointRows(ctx, binder, WALL_QUAD_ID),
-    colorRow(binder, 'Debug color', () => store.config.wallQuad.debugColor, (v) => store.setWallColor(v)),
+    colorCheckRow(binder, 'Debug color', () => store.config.wallQuad.debugColor, (v) => store.setWallColor(v)),
     checkboxRow(binder, 'Test pattern', () => store.isTestPatternOn(WALL_QUAD_ID), (v) => store.setTestPattern(WALL_QUAD_ID, v)),
+    pointRows(ctx, binder, WALL_QUAD_ID),
     convexWarning(ctx, binder, WALL_QUAD_ID),
+    playlistBlock(ctx, binder, WALL_QUAD_ID),
   ], { class: 'quad' });
 
   // ----- Frames (rebuilt when the frame list changes) -----
@@ -83,16 +83,17 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
   down.title = 'Move down (draws over the frames above it)';
   down.disabled = index === last;
 
-  const insetRow = (edge: 'top' | 'right' | 'bottom' | 'left', label: string) =>
-    sliderRow(b, label, {
-      get: () => frame().inset[edge],
-      set: (v) => store.updateFrame(id, { inset: { ...frame().inset, [edge]: v } }),
-      min: 0, step: 0.001, decimals: 4, sliderMin: 0, sliderMax: INSET_MAX,
-    });
-
   return section(ctx.openState, `frame:${id}`, quadTitle(`Frame ${index + 1}`, () => frame().debugColor, b, id), [
+    colorCheckRow(b, 'Debug color', () => frame().debugColor, (v) => store.updateFrame(id, { debugColor: v })),
+    checkboxRow(b, 'Test pattern', () => store.isTestPatternOn(id), (v) => store.setTestPattern(id, v)),
+    withHelp(
+      checkboxRow(b, 'Additive blend', () => frame().blend === 'add', (v) => store.updateFrame(id, { blend: v ? 'add' : 'normal' })),
+      "Adds this frame's light on top of what's behind it instead of covering it: black becomes see-through and bright areas glow over it. " +
+        'Use it to fake transparency for content shot on black (fire, smoke, sparks). To layer, overlap this frame with another ' +
+        'and move it lower in the list (↓) so it draws on top.',
+    ),
     pointRows(ctx, b, id),
-    colorRow(b, 'Debug color', () => frame().debugColor, (v) => store.updateFrame(id, { debugColor: v })),
+    rotateButton(ctx, id),
     numberRow(b, 'Physical aspect (w÷h)', {
       get: () => frame().physicalAspect, set: (v) => store.updateFrame(id, { physicalAspect: v }),
       min: 0.05, max: 20, step: 0.0001, decimals: 4,
@@ -111,19 +112,18 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
       }),
       "Gap between the frame's bottom edge and the captions, in frame widths.",
     ),
-    withHelp(
-      checkboxRow(b, 'Additive blend', () => frame().blend === 'add', (v) => store.updateFrame(id, { blend: v ? 'add' : 'normal' })),
-      "Adds this frame's light to the frames drawn before it instead of covering them, so black is see-through. For bright content on black (fire, glows). Frames lower in this list draw on top.",
-    ),
-    h('div', { class: 'subhead', text: 'Inset (frame widths)' }),
-    insetRow('top', 'Top'),
-    insetRow('right', 'Right'),
-    insetRow('bottom', 'Bottom'),
-    insetRow('left', 'Left'),
-    checkboxRow(b, 'Test pattern', () => store.isTestPatternOn(id), (v) => store.setTestPattern(id, v)),
     convexWarning(ctx, b, id),
     playlistBlock(ctx, b, id),
   ], { class: 'quad', headerExtras: [up, down, remove] });
+}
+
+/** Turns the frame 90° clockwise about its center (content and captions turn with it). */
+function rotateButton(ctx: PanelContext, id: QuadId): HTMLElement {
+  const rotate = withHelp(
+    button('↻ Rotate 90° clockwise', () => ctx.store.rotateQuad(id), 'wide'),
+    "Turns this frame 90° clockwise around its center, so its picture and captions turn with it. If that pushes a corner off screen, the frame is slid back on screen. Ctrl+Z undoes it.",
+  );
+  return h('div', { class: 'rotate-row' }, [rotate]);
 }
 
 /** Section title: color swatch, name, and an optional read-only id in gray. */

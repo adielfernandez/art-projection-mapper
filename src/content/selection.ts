@@ -15,39 +15,42 @@ export function mediaKind(filepath: string): MediaKind | null {
   return null;
 }
 
-export interface PoolItem {
+export interface PlayableAsset {
   uid: string;
-  manifestPath: string;
+  poolPath: string;
   entry: AssetEntry;
 }
 
 /**
- * The pool: all assets from all manifests in order, minus those flagged with errors.
+ * Randomized show: every asset from every asset pool, in order, minus those flagged with
+ * errors and those marked wall only (the frames never show those).
  */
-export function buildPool(
-  manifests: readonly { path: string; assets: readonly { uid: string; entry: AssetEntry }[] }[],
+export function playableAssets(
+  pools: readonly { path: string; assets: readonly { uid: string; entry: AssetEntry }[] }[],
   errors: Readonly<Record<string, string>>,
-): PoolItem[] {
-  const pool: PoolItem[] = [];
-  for (const m of manifests) {
+): PlayableAsset[] {
+  const out: PlayableAsset[] = [];
+  for (const m of pools) {
     for (const a of m.assets) {
-      if (errors[a.uid] === undefined) pool.push({ uid: a.uid, manifestPath: m.path, entry: a.entry });
+      if (errors[a.uid] === undefined && !a.entry.wallOnly) out.push({ uid: a.uid, poolPath: m.path, entry: a.entry });
     }
   }
-  return pool;
+  return out;
 }
 
-export type PoolMode = 'empty' | 'static' | 'cycling';
+/** How a frame plays: black, one asset held, or cycling through several. */
+export type FrameMode = 'empty' | 'static' | 'cycling';
 
-export function poolMode(poolSize: number, frameCount: number): PoolMode {
-  if (poolSize === 0 || frameCount === 0) return 'empty';
-  return poolSize > frameCount ? 'cycling' : 'static';
+/** Randomized show: the mode every frame shares, from the playable asset count vs frame count. */
+export function randomizedMode(assetCount: number, frameCount: number): FrameMode {
+  if (assetCount === 0 || frameCount === 0) return 'empty';
+  return assetCount > frameCount ? 'cycling' : 'static';
 }
 
-/** Static mode: asset i % pool size goes to frame i (A, B with three frames → A, B, A). */
-export function staticAssignments(pool: readonly string[], frameIds: readonly string[]): Map<string, string> {
+/** Static mode: asset i % asset count goes to frame i (A, B with three frames → A, B, A). */
+export function staticAssignments(assets: readonly string[], frameIds: readonly string[]): Map<string, string> {
   const out = new Map<string, string>();
-  if (pool.length === 0) return out;
-  frameIds.forEach((id, i) => out.set(id, pool[i % pool.length]!));
+  if (assets.length === 0) return out;
+  frameIds.forEach((id, i) => out.set(id, assets[i % assets.length]!));
   return out;
 }

@@ -172,6 +172,28 @@ describe('Store frame and project actions', () => {
     expect(store.config.frames.map((f) => f.id)).toEqual([a, c, b]);
   });
 
+  it('rotateQuad turns a frame 90° clockwise as one undo step, inside the viewport', () => {
+    const { store, ref } = makeStore();
+    const start = store.getCorners(ref.quadId)!.map((p) => [...p]);
+    store.rotateQuad(ref.quadId);
+    const turned = store.getCorners(ref.quadId)!.map((p) => [...p]);
+    expect(turned).not.toEqual(start);
+    for (const [x, y] of turned) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(1);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(1);
+    }
+    expect(store.runtime.configDirty).toBe(true);
+    store.undo();
+    store.getCorners(ref.quadId)!.forEach((p, i) => {
+      expect(p[0]).toBeCloseTo(start[i]![0]!, 12);
+      expect(p[1]).toBeCloseTo(start[i]![1]!, 12);
+    });
+    store.redo();
+    expect(store.getCorners(ref.quadId)!.map((p) => [...p])).toEqual(turned);
+  });
+
   it('undo skips edits on removed frames', () => {
     const { store, ref } = makeStore();
     const other = { quadId: store.config.frames[1]!.id, index: 0 as const };
@@ -217,7 +239,7 @@ describe('Store frame and project actions', () => {
 });
 
 describe('Store playlists', () => {
-  const item = (filepath: string) => ({ manifest: 'assets.json', filepath });
+  const item = (filepath: string) => ({ pool: 'assets.json', filepath });
   const paths = (store: Store, id: string) => store.config.frames.find((f) => f.id === id)!.playlist.map((p) => p.filepath);
 
   it('adds, moves and removes entries, marking the config modified', () => {
@@ -254,7 +276,7 @@ describe('Store playlists', () => {
 
   it('playlist entries follow an asset filepath edit', () => {
     const { store, ref } = makeStore();
-    store.setManifests([
+    store.setPools([
       {
         path: 'assets.json',
         assets: [{ uid: 'u1', entry: { filepath: 'a.jpg' }, present: ['filepath'], extra: {} }],
@@ -265,11 +287,27 @@ describe('Store playlists', () => {
       },
     ]);
     store.addToPlaylist(ref.quadId, item('a.jpg'));
-    store.addToPlaylist(ref.quadId, { manifest: 'other.json', filepath: 'a.jpg' });
+    store.addToPlaylist(ref.quadId, { pool: 'other.json', filepath: 'a.jpg' });
     store.markConfigSaved();
     store.updateAsset('u1', { filepath: 'renamed.jpg' });
-    expect(paths(store, ref.quadId)).toEqual(['renamed.jpg', 'a.jpg']); // other manifest untouched
+    expect(paths(store, ref.quadId)).toEqual(['renamed.jpg', 'a.jpg']); // other pool untouched
     expect(store.runtime.configDirty).toBe(true);
+  });
+
+  it('the wall has its own playlist, edited the same way and followed on renames', () => {
+    const { store } = makeStore();
+    store.setPools([{ path: 'walls.json', assets: [{ uid: 'w1', entry: { filepath: 'paper.jpg' }, present: ['filepath'], extra: {} }], error: null, warnings: [], dirty: false, extra: {} }]);
+    store.addToPlaylist(WALL_QUAD_ID, { pool: 'walls.json', filepath: 'paper.jpg' });
+    store.addToPlaylist(WALL_QUAD_ID, { pool: 'walls.json', filepath: 'other.jpg' });
+    store.movePlaylistItem(WALL_QUAD_ID, 1, 0);
+    expect(store.config.wallQuad.playlist.map((p) => p.filepath)).toEqual(['other.jpg', 'paper.jpg']);
+    expect(store.playlistKeys(WALL_QUAD_ID)).toHaveLength(2);
+    expect(store.framesUsingAsset('w1')).toEqual([WALL_QUAD_ID]);
+    expect(store.framesUsingPool('walls.json')).toEqual([WALL_QUAD_ID]);
+    store.updateAsset('w1', { filepath: 'renamed.jpg' });
+    expect(store.config.wallQuad.playlist.map((p) => p.filepath)).toEqual(['other.jpg', 'renamed.jpg']);
+    store.removePlaylistItem(WALL_QUAD_ID, 0);
+    expect(store.config.wallQuad.playlist.map((p) => p.filepath)).toEqual(['renamed.jpg']);
   });
 
   it('sets the show type', () => {
@@ -278,5 +316,118 @@ describe('Store playlists', () => {
     store.setShowType('manual');
     expect(store.config.showType).toBe('manual');
     expect(store.runtime.configDirty).toBe(true);
+  });
+});
+
+describe('Store test patterns for a new show', () => {
+  it('shows every test pattern, and frames added meanwhile show theirs', () => {
+    const { store } = makeStore();
+    expect(store.allQuadIds().some((id) => store.isTestPatternOn(id))).toBe(false);
+    store.showAllTestPatterns();
+    expect(store.allQuadIds().every((id) => store.isTestPatternOn(id))).toBe(true);
+    expect(store.isTestPatternOn(store.addFrame())).toBe(true);
+    // Loading a show resets them; frames added then start without one.
+    store.replaceConfig(store.configSnapshot(), 'show');
+    expect(store.allQuadIds().some((id) => store.isTestPatternOn(id))).toBe(false);
+    expect(store.isTestPatternOn(store.addFrame())).toBe(false);
+  });
+});
+
+describe('Store test patterns when content is added', () => {
+  const rec = (uid: string) => ({ uid, entry: { filepath: `${uid}.jpg` }, present: ['filepath'], extra: {} });
+  const pool = { path: 'p.json', assets: [], error: null, warnings: [], dirty: false, extra: {} };
+
+  it('adding to a playlist turns off that quad\'s pattern only (frame or wall)', () => {
+    const { store } = makeStore();
+    store.showAllTestPatterns();
+    const [f1, f2] = store.config.frames.map((f) => f.id);
+    store.addToPlaylist(f1!, { pool: 'p.json', filepath: 'a.jpg' });
+    expect([f1, f2, WALL_QUAD_ID].map((id) => store.isTestPatternOn(id!))).toEqual([false, true, true]);
+    store.addToPlaylist(WALL_QUAD_ID, { pool: 'p.json', filepath: 'a.jpg' });
+    expect(store.isTestPatternOn(WALL_QUAD_ID)).toBe(false);
+  });
+
+  it('adding files to a pool turns off every frame\'s pattern in a randomized show, not the wall\'s', () => {
+    const { store } = makeStore();
+    store.setPools([pool]);
+    store.showAllTestPatterns();
+    store.addAssets('p.json', [rec('a')]);
+    expect(store.config.frames.every((f) => !store.isTestPatternOn(f.id))).toBe(true);
+    expect(store.isTestPatternOn(WALL_QUAD_ID)).toBe(true);
+  });
+
+  it('in a manual show, adding files to a pool leaves the patterns alone', () => {
+    const { store } = makeStore();
+    store.setPools([pool]);
+    store.setShowType('manual');
+    store.showAllTestPatterns();
+    store.addAssets('p.json', [rec('a')]);
+    expect(store.allQuadIds().every((id) => store.isTestPatternOn(id))).toBe(true);
+  });
+});
+
+describe('Store adding and removing content', () => {
+  const pool = (path: string, filepaths: string[]) => ({
+    path,
+    assets: filepaths.map((filepath, i) => ({ uid: `${path}#${i}`, entry: { filepath }, present: ['filepath'], extra: {} })),
+    error: null,
+    warnings: [],
+    dirty: false,
+    extra: {},
+  });
+
+  it('adds assets to a pool, marking it and the assets modified', () => {
+    const { store } = makeStore();
+    store.setPools([pool('art.json', ['a.jpg']), pool('video.json', [])]);
+    store.addAssets('video.json', [{ uid: 'n1', entry: { filepath: 'media/v.mp4' }, present: ['filepath'], extra: {} }]);
+    expect(store.pools[1]!.assets.map((a) => a.entry.filepath)).toEqual(['media/v.mp4']);
+    expect(store.pools[1]!.dirty).toBe(true);
+    expect(store.pools[0]!.dirty).toBe(false);
+    expect(store.runtime.assetsDirty).toBe(true);
+    expect(store.findAsset('n1')?.pool.path).toBe('video.json');
+  });
+
+  it('removes an asset, leaving playlist entries that used it to show as missing', () => {
+    const { store, ref } = makeStore();
+    store.setPools([pool('art.json', ['a.jpg', 'b.jpg'])]);
+    store.addToPlaylist(ref.quadId, { pool: 'art.json', filepath: 'a.jpg' });
+    expect(store.framesUsingAsset('art.json#0')).toEqual([ref.quadId]);
+    expect(store.framesUsingAsset('art.json#1')).toEqual([]);
+    store.setAssetError('art.json#0', 'broken');
+    store.removeAsset('art.json#0');
+    expect(store.pools[0]!.assets.map((a) => a.uid)).toEqual(['art.json#1']);
+    expect(store.pools[0]!.dirty).toBe(true);
+    expect(store.runtime.assetErrors['art.json#0']).toBeUndefined();
+    expect(store.config.frames[0]!.playlist).toEqual([{ pool: 'art.json', filepath: 'a.jpg' }]);
+  });
+
+  it('removes a pool from the show and the config, keeping playlist entries (shown missing)', () => {
+    const { store, ref } = makeStore();
+    store.setPools([pool('art.json', ['a.jpg']), { ...pool('video.json', ['v.mp4']), dirty: true }]);
+    store.replaceConfig({ ...store.configSnapshot(), assetPools: ['art.json', 'video.json'] }, 'show');
+    store.addToPlaylist(ref.quadId, { pool: 'video.json', filepath: 'v.mp4' });
+    store.setAssetError('video.json#0', 'broken');
+    expect(store.framesUsingPool('video.json')).toEqual([ref.quadId]);
+    expect(store.runtime.assetsDirty).toBe(false); // setPools clears it; mark it via an edit
+    store.updateAsset('video.json#0', { title: 'x' });
+    store.removePool('video.json');
+    expect(store.pools.map((m) => m.path)).toEqual(['art.json']);
+    expect(store.config.assetPools).toEqual(['art.json']);
+    expect(store.runtime.assetErrors['video.json#0']).toBeUndefined();
+    expect(store.runtime.assetsDirty).toBe(false); // the only modified pool is gone
+    expect(store.runtime.configDirty).toBe(true);
+    expect(store.config.frames[0]!.playlist).toEqual([{ pool: 'video.json', filepath: 'v.mp4' }]);
+  });
+
+  it('adds a pool to the show, listing it in the config', () => {
+    const { store } = makeStore();
+    store.markConfigSaved();
+    store.addPool({ ...pool('new.json', []), dirty: true });
+    expect(store.pools.map((m) => m.path)).toEqual(['new.json']);
+    expect(store.config.assetPools).toEqual(['new.json']);
+    expect(store.runtime.configDirty).toBe(true);
+    expect(store.runtime.assetsDirty).toBe(true);
+    store.addPool(pool('new.json', ['x.jpg'])); // already there: ignored
+    expect(store.pools).toHaveLength(1);
   });
 });

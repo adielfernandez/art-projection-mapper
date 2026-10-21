@@ -127,6 +127,40 @@ export function colorRow(b: Binder, label: string, get: () => string, set: (v: s
   return row(label, input);
 }
 
+/** A dropdown. `options` are [value, label] pairs. */
+export function selectRow<T extends string>(
+  b: Binder,
+  label: string,
+  options: readonly (readonly [T, string])[],
+  get: () => T,
+  set: (v: T) => void,
+): HTMLElement {
+  const select = h('select', { class: 'select' });
+  for (const [value, text] of options) select.append(Object.assign(h('option', { text }), { value }));
+  select.addEventListener('change', () => {
+    set(select.value as T);
+    select.blur();
+  });
+  const sync = () => {
+    if (document.activeElement !== select) select.value = get();
+  };
+  b.add(sync);
+  sync();
+  return row(label, select);
+}
+
+/** A color picker laid out like a checkbox row: a small swatch on the left, then the label. */
+export function colorCheckRow(b: Binder, label: string, get: () => string, set: (v: string) => void): HTMLElement {
+  const input = h('input', { type: 'color', class: 'color swatch-input' });
+  input.addEventListener('input', () => set(input.value.toUpperCase()));
+  const sync = () => {
+    if (!isEditing(input)) input.value = get().toLowerCase();
+  };
+  b.add(sync);
+  sync();
+  return h('label', { class: 'row check' }, [input, h('span', { text: label })]);
+}
+
 export function checkboxRow(b: Binder, label: string, get: () => boolean, set: (v: boolean) => void): HTMLElement {
   const input = h('input', { type: 'checkbox' });
   input.addEventListener('change', () => {
@@ -138,6 +172,26 @@ export function checkboxRow(b: Binder, label: string, get: () => boolean, set: (
   sync();
   const lab = h('label', { class: 'row check' }, [input, h('span', { text: label })]);
   return lab;
+}
+
+const NOTE_MS = 4000;
+const FADE_MS = 400;
+const noteTimers = new WeakMap<HTMLElement, number>();
+
+/**
+ * Show a note, or keep it until replaced. With `fade`, it fades out and hides itself after
+ * 4 s; showing it again restarts that.
+ */
+export function showNote(el: HTMLElement, text: string, kind: string, fade: boolean): void {
+  window.clearTimeout(noteTimers.get(el));
+  el.className = `message ${kind}`;
+  el.textContent = text;
+  el.hidden = false;
+  if (!fade) return;
+  noteTimers.set(el, window.setTimeout(() => {
+    el.classList.add('fading');
+    noteTimers.set(el, window.setTimeout(() => (el.hidden = true), FADE_MS));
+  }, NOTE_MS));
 }
 
 /** Attach hover help text (shown by helpTooltip.ts). */

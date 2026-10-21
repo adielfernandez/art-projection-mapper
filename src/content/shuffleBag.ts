@@ -13,7 +13,7 @@ export class ShuffleBag {
 
   constructor(private rng: () => number = Math.random) {}
 
-  /** Update the pool. Removed items leave the bag; new items join the current round at random positions. */
+  /** Update the items. Removed items leave the bag; new items join the current round at random positions. */
   setItems(items: readonly string[]): void {
     this.items = [...items];
     const set = new Set(items);
