@@ -200,3 +200,68 @@ describe('Store frame and project actions', () => {
     expect(store.isQuadValid(ref.quadId)).toBe(false);
   });
 });
+
+describe('Store playlists', () => {
+  const item = (filepath: string) => ({ manifest: 'assets.json', filepath });
+  const paths = (store: Store, id: string) => store.config.frames.find((f) => f.id === id)!.playlist.map((p) => p.filepath);
+
+  it('adds, moves and removes entries, marking the config modified', () => {
+    const { store, ref } = makeStore();
+    const id = ref.quadId;
+    store.addToPlaylist(id, item('a.jpg'));
+    store.addToPlaylist(id, item('b.jpg'));
+    store.addToPlaylist(id, item('c.jpg'));
+    store.addToPlaylist(id, item('a.jpg')); // duplicates allowed
+    expect(paths(store, id)).toEqual(['a.jpg', 'b.jpg', 'c.jpg', 'a.jpg']);
+    expect(store.runtime.configDirty).toBe(true);
+    store.movePlaylistItem(id, 0, 2);
+    expect(paths(store, id)).toEqual(['b.jpg', 'c.jpg', 'a.jpg', 'a.jpg']);
+    store.removePlaylistItem(id, 1);
+    expect(paths(store, id)).toEqual(['b.jpg', 'a.jpg', 'a.jpg']);
+    store.movePlaylistItem(id, 0, 9); // out of range: ignored
+    store.removePlaylistItem(id, -1);
+    expect(paths(store, id)).toEqual(['b.jpg', 'a.jpg', 'a.jpg']);
+  });
+
+  it('gives each entry a stable key that follows it through moves', () => {
+    const { store, ref } = makeStore();
+    const id = ref.quadId;
+    store.addToPlaylist(id, item('a.jpg'));
+    store.addToPlaylist(id, item('a.jpg'));
+    store.addToPlaylist(id, item('b.jpg'));
+    const [k0, k1, k2] = store.playlistKeys(id);
+    expect(new Set([k0, k1, k2]).size).toBe(3);
+    store.movePlaylistItem(id, 2, 0);
+    expect(store.playlistKeys(id)).toEqual([k2, k0, k1]);
+    store.removePlaylistItem(id, 1);
+    expect(store.playlistKeys(id)).toEqual([k2, k1]);
+  });
+
+  it('playlist entries follow an asset filepath edit', () => {
+    const { store, ref } = makeStore();
+    store.setManifests([
+      {
+        path: 'assets.json',
+        assets: [{ uid: 'u1', entry: { filepath: 'a.jpg' }, present: ['filepath'], extra: {} }],
+        error: null,
+        warnings: [],
+        dirty: false,
+        extra: {},
+      },
+    ]);
+    store.addToPlaylist(ref.quadId, item('a.jpg'));
+    store.addToPlaylist(ref.quadId, { manifest: 'other.json', filepath: 'a.jpg' });
+    store.markConfigSaved();
+    store.updateAsset('u1', { filepath: 'renamed.jpg' });
+    expect(paths(store, ref.quadId)).toEqual(['renamed.jpg', 'a.jpg']); // other manifest untouched
+    expect(store.runtime.configDirty).toBe(true);
+  });
+
+  it('sets the show type', () => {
+    const { store } = makeStore();
+    expect(store.config.showType).toBe('randomized');
+    store.setShowType('manual');
+    expect(store.config.showType).toBe('manual');
+    expect(store.runtime.configDirty).toBe(true);
+  });
+});

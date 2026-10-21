@@ -9,6 +9,9 @@ import {
   type FrameConfig,
   type Inset,
   type NormPoint,
+  type PlaylistItem,
+  SHOW_TYPES,
+  type ShowType,
 } from '../state/schema';
 import { readJsonIfExists, writeText } from './projectFolder';
 
@@ -85,6 +88,13 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     }
   }
 
+  // showType
+  let showType = d.showType;
+  if (data.showType !== undefined) {
+    if (SHOW_TYPES.includes(data.showType as ShowType)) showType = data.showType as ShowType;
+    else warnings.push(`showType must be ${SHOW_TYPES.map((t) => `"${t}"`).join(' or ')}; using "${d.showType}".`);
+  }
+
   // ui
   const ui = obj(data, 'ui', 'config');
   let panelSide = d.ui.panelSide;
@@ -138,6 +148,20 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           bottom: num(ins, 'bottom', 0, `${path}.inset`, { min: 0 }),
           left: num(ins, 'left', 0, `${path}.inset`, { min: 0 }),
         };
+        const playlist: PlaylistItem[] = [];
+        if (rawFrame.playlist !== undefined) {
+          if (!Array.isArray(rawFrame.playlist)) {
+            warnings.push(`${path}.playlist must be an array; using an empty playlist.`);
+          } else {
+            rawFrame.playlist.forEach((item, j) => {
+              if (isObj(item) && typeof item.manifest === 'string' && typeof item.filepath === 'string') {
+                playlist.push({ manifest: item.manifest, filepath: item.filepath });
+              } else {
+                warnings.push(`${path}.playlist[${j}] must be { "manifest": string, "filepath": string }; skipped.`);
+              }
+            });
+          }
+        }
         frames.push({
           id: id as string,
           corners: corners(rawFrame.corners, fallback.corners, `${path}.corners`),
@@ -146,6 +170,7 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           captionSpacing: num(rawFrame, 'captionSpacing', fallback.captionSpacing, path),
           captionOffsetX: num(rawFrame, 'captionOffsetX', fallback.captionOffsetX, path),
           inset,
+          playlist,
         });
       });
     }
@@ -199,6 +224,7 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     config: {
       schemaVersion: CONFIG_SCHEMA_VERSION,
       assetManifests,
+      showType,
       ui: { panelSide },
       global,
       wallQuad,

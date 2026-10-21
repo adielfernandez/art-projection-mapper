@@ -13,7 +13,9 @@ import {
   type ManifestRecord,
   type NormPoint,
   type PanelSide,
+  type PlaylistItem,
   type QuadId,
+  type ShowType,
 } from './schema';
 
 export type CornerIndex = 0 | 1 | 2 | 3;
@@ -113,6 +115,12 @@ export class Store {
   /** Corners of the quad being dragged (one point or the whole quad), as they were at drag start. */
   private drag: { quadId: QuadId; before: NormPoint[] } | null = null;
   private pending: PendingEvent | null = null;
+  /**
+   * Runtime-only identity for each playlist entry, parallel to frame.playlist. Lets the
+   * scheduler follow an entry through reorders, and tell duplicate entries apart.
+   */
+  private playlistKeyMap = new Map<QuadId, number[]>();
+  private nextPlaylistKey = 1;
 
   constructor(config: Config, viewport: { w: number; h: number }) {
     this._config = config;
@@ -175,6 +183,11 @@ export class Store {
     return this._config.frames.findIndex((f) => f.id === id);
   }
 
+  /** Runtime keys of a frame's playlist entries, index-aligned with frame.playlist. */
+  playlistKeys(frameId: QuadId): readonly number[] {
+    return this.mutablePlaylistKeys(frameId) ?? [];
+  }
+
   canUndo(): boolean {
     return this.undoStack.length > 0;
   }
@@ -207,6 +220,7 @@ export class Store {
   /** Replace the whole config (project load / default project). Clears undo history and the config dirty flag. */
   replaceConfig(config: Config, folderName: string | null): void {
     this._config = structuredClone(config);
+    this.playlistKeyMap.clear();
     this.undoStack.length = 0;
     this.redoStack.length = 0;
     this.drag = null;
@@ -248,15 +262,34 @@ export class Store {
     this.emit((e) => (e.assets = e.runtime = true));
   }
 
-  /** Live edit of an asset entry. Marks its manifest modified. A new filepath clears the asset's error. */
+  /**
+   * Live edit of an asset entry. Marks its manifest modified. A new filepath clears the asset's
+   * error, and playlist entries pointing at the old filepath follow it (marking the config modified).
+   */
   updateAsset(uid: string, patch: Partial<AssetEntry>): void {
     for (const m of this._manifests) {
       const a = m.assets.find((x) => x.uid === uid);
       if (!a) continue;
-      const pathChanged = patch.filepath !== undefined && patch.filepath !== a.entry.filepath;
+      const oldPath = a.entry.filepath;
+      const pathChanged = patch.filepath !== undefined && patch.filepath !== oldPath;
       Object.assign(a.entry, patch);
       m.dirty = true;
-      if (pathChanged) delete this._runtime.assetErrors[uid];
+      if (pathChanged) {
+        delete this._runtime.assetErrors[uid];
+        let followed = false;
+        for (const f of this._config.frames) {
+          for (const item of f.playlist) {
+            if (item.manifest === m.path && item.filepath === oldPath) {
+              item.filepath = a.entry.filepath;
+              followed = true;
+            }
+          }
+        }
+        if (followed) {
+          this.markConfigDirty();
+          this.emit((e) => (e.frames = true));
+        }
+      }
       this._runtime.assetsDirty = true;
       this.emit((e) => (e.assets = e.runtime = true));
       return;
@@ -422,6 +455,7 @@ export class Store {
     const i = this.frameIndex(id);
     if (i < 0) return;
     this._config.frames.splice(i, 1);
+    this.playlistKeyMap.delete(id);
     delete this._runtime.testPattern[id];
     if (this._runtime.selected?.quadId === id) this._runtime.selected = null;
     this.markConfigDirty();
@@ -440,7 +474,46 @@ export class Store {
     this.emit((e) => (e.frames = true));
   }
 
+  // ---------- playlist actions ----------
+
+  /** Insert an asset into a frame's playlist (at the end by default). */
+  addToPlaylist(frameId: QuadId, item: PlaylistItem, index?: number): void {
+    const f = this.mutableFrame(frameId);
+    const keys = this.mutablePlaylistKeys(frameId);
+    if (!f || !keys) return;
+    const at = index === undefined ? f.playlist.length : Math.max(0, Math.min(f.playlist.length, index));
+    f.playlist.splice(at, 0, { manifest: item.manifest, filepath: item.filepath });
+    keys.splice(at, 0, this.nextPlaylistKey++);
+    this.playlistChanged();
+  }
+
+  /** Move a playlist entry from one position to another. */
+  movePlaylistItem(frameId: QuadId, from: number, to: number): void {
+    const f = this.mutableFrame(frameId);
+    const keys = this.mutablePlaylistKeys(frameId);
+    const n = f?.playlist.length ?? 0;
+    if (!f || !keys || from === to || from < 0 || from >= n || to < 0 || to >= n) return;
+    f.playlist.splice(to, 0, ...f.playlist.splice(from, 1));
+    keys.splice(to, 0, ...keys.splice(from, 1));
+    this.playlistChanged();
+  }
+
+  removePlaylistItem(frameId: QuadId, index: number): void {
+    const f = this.mutableFrame(frameId);
+    const keys = this.mutablePlaylistKeys(frameId);
+    if (!f || !keys || index < 0 || index >= f.playlist.length) return;
+    f.playlist.splice(index, 1);
+    keys.splice(index, 1);
+    this.playlistChanged();
+  }
+
   // ---------- global config actions ----------
+
+  setShowType(type: ShowType): void {
+    if (this._config.showType === type) return;
+    this._config.showType = type;
+    this.configChanged(true);
+  }
 
   setWallColor(color: string): void {
     this._config.wallQuad.debugColor = color;
@@ -531,6 +604,27 @@ export class Store {
   private mutableCorners(quadId: QuadId): Corners | null {
     if (quadId === WALL_QUAD_ID) return this._config.wallQuad.corners;
     return this._config.frames.find((f) => f.id === quadId)?.corners ?? null;
+  }
+
+  private mutableFrame(id: QuadId): FrameConfig | null {
+    return this._config.frames.find((f) => f.id === id) ?? null;
+  }
+
+  /** Playlist keys for a frame, created on first use (or if they fell out of step with the playlist). */
+  private mutablePlaylistKeys(frameId: QuadId): number[] | null {
+    const f = this.mutableFrame(frameId);
+    if (!f) return null;
+    let keys = this.playlistKeyMap.get(frameId);
+    if (!keys || keys.length !== f.playlist.length) {
+      keys = f.playlist.map(() => this.nextPlaylistKey++);
+      this.playlistKeyMap.set(frameId, keys);
+    }
+    return keys;
+  }
+
+  private playlistChanged(): void {
+    this.markConfigDirty();
+    this.emit((e) => (e.frames = true));
   }
 
   private pushEdit(edit: MappingEdit): void {

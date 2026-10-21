@@ -54,6 +54,7 @@ export function newFrame(
     captionSpacing: 0.05,
     captionOffsetX: 0,
     inset: { top: 0, right: 0, bottom: 0, left: 0 },
+    playlist: [],
   };
 }
 
@@ -65,6 +66,7 @@ export function defaultConfig(canvasAspect: number): Config {
   return {
     schemaVersion: CONFIG_SCHEMA_VERSION,
     assetManifests: [],
+    showType: 'randomized',
     ui: { panelSide: 'left' },
     global: {
       backgroundColor: '#000000',

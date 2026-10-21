@@ -64,6 +64,7 @@ export class QuadLayer {
     u.uTex!.value = v.texture;
     u.uHasTex!.value = v.texture ? 1 : 0;
     u.uInvertV!.value = v.invertV ? 1 : 0;
+    u.uDecodeSRGB!.value = needsShaderDecode(v.texture) ? 1 : 0;
     u.uView!.value.set(v.view.cx, v.view.cy, v.view.sx, v.view.sy);
     u.uReveal!.value = v.reveal;
     u.uFade!.value = v.fade;
@@ -81,4 +82,12 @@ export class QuadLayer {
     this.testPattern.material.dispose();
     this.content?.material.dispose();
   }
+}
+
+/**
+ * sRGB video textures are uploaded without hardware sRGB decoding (three.js forces linear
+ * RGBA8 for video), so the frame shader must decode them itself. Images are decoded by the GPU.
+ */
+function needsShaderDecode(texture: THREE.Texture | null): boolean {
+  return !!texture && (texture as THREE.VideoTexture).isVideoTexture === true && texture.colorSpace === THREE.SRGBColorSpace;
 }

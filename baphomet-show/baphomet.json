@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "title": "",
+      "artist": "",
+      "year": "",
+      "filepath": "media/flame_black.mp4",
+      "zoom": false,
+      "pan": false
+    },
+    {
+      "title": "",
+      "artist": "",
+      "year": "",
+      "filepath": "media/flame_square.mp4",
+      "zoom": false,
+      "pan": false
+    },
+    {
+      "title": "",
+      "artist": "",
+      "year": "",
+      "filepath": "media/Seal_of_Baphomet.png",
+      "zoom": false,
+      "pan": false
+    }
+  ]
+}

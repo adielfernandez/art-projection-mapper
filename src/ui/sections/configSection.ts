@@ -1,4 +1,5 @@
-import { button, h, section } from '../controls';
+import type { ShowType } from '../../state/schema';
+import { button, h, row, section, withHelp } from '../controls';
 import type { PanelContext } from './context';
 
 export function configSection(ctx: PanelContext): HTMLElement {
@@ -11,6 +12,16 @@ export function configSection(ctx: PanelContext): HTMLElement {
   const save = button('Save', () => void project.save(confirm), 'primary');
   save.title = 'Write config.json';
   const message = h('div', { class: 'message' });
+
+  const showTypeButton = (type: ShowType, label: string) => {
+    const btn = button(label, () => store.setShowType(type));
+    binder.add(() => btn.classList.toggle('active', store.config.showType === type));
+    return btn;
+  };
+  const showType = withHelp(
+    row('Show type', h('div', { class: 'segmented' }, [showTypeButton('randomized', 'Randomized'), showTypeButton('manual', 'Manual')])),
+    "Randomized: all frames draw from the shared asset pool in shuffled order. Manual: each frame plays its own playlist (in its Mapping section) in order; one asset stays up, an empty playlist stays black. Switching restarts every frame. Saved with the config.",
+  );
 
   binder.add(() => {
     const rt = store.runtime;
@@ -37,5 +48,6 @@ export function configSection(ctx: PanelContext): HTMLElement {
     reopen,
     h('div', { class: 'button-row' }, [load, save]),
     message,
+    showType,
   ], { defaultOpen: true });
 }

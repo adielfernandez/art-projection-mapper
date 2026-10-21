@@ -1,0 +1,332 @@
+{
+  "schemaVersion": 1,
+  "assetManifests": [
+    "baphomet.json"
+  ],
+  "showType": "manual",
+  "ui": {
+    "panelSide": "right"
+  },
+  "global": {
+    "backgroundColor": "#000000",
+    "debug": {
+      "strokeWidth": 2,
+      "pointRadius": 39,
+      "crosshairSize": 22
+    }
+  },
+  "wallQuad": {
+    "corners": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "debugColor": "#0A84FF"
+  },
+  "frames": [
+    {
+      "id": "center",
+      "corners": [
+        [
+          0.32201280951487904,
+          0.3015430596547567
+        ],
+        [
+          0.5216390081065438,
+          0.30227997767800485
+        ],
+        [
+          0.5278480874167584,
+          0.6389290341861117
+        ],
+        [
+          0.32658813540169995,
+          0.6364585708006233
+        ]
+      ],
+      "physicalAspect": 1,
+      "debugColor": "#FF453A",
+      "captionSpacing": 0.019,
+      "captionOffsetX": 0.006,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "playlist": [
+        {
+          "manifest": "baphomet.json",
+          "filepath": "media/Seal_of_Baphomet.png"
+        }
+      ]
+    },
+    {
+      "id": "top_left",
+      "corners": [
+        [
+          0.1284752571480084,
+          0.0787990599904893
+        ],
+        [
+          0.25119388013675764,
+          0.07579799535598009
+        ],
+        [
+          0.2507846684784569,
+          0.251407848651213
+        ],
+        [
+          0.1314812313272315,
+          0.2466909647693174
+        ]
+      ],
+      "physicalAspect": 1,
+      "debugColor": "#30D158",
+      "captionSpacing": 0.019,
+      "captionOffsetX": -0.02,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "playlist": [
+        {
+          "manifest": "baphomet.json",
+          "filepath": "media/flame_black.mp4"
+        }
+      ]
+    },
+    {
+      "id": "top_right",
+      "corners": [
+        [
+          0.5786236562659188,
+          0.04832582502147298
+        ],
+        [
+          0.6954425487086271,
+          0.04156441563507152
+        ],
+        [
+          0.6979846286266991,
+          0.23526684714534718
+        ],
+        [
+          0.5751334732486297,
+          0.23924302062206482
+        ]
+      ],
+      "physicalAspect": 1,
+      "debugColor": "#FFD60A",
+      "captionSpacing": 0.05,
+      "captionOffsetX": 0,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "playlist": [
+        {
+          "manifest": "baphomet.json",
+          "filepath": "media/flame_square.mp4"
+        }
+      ]
+    },
+    {
+      "id": "center_left",
+      "corners": [
+        [
+          0.10612013047687496,
+          0.36806055590805564
+        ],
+        [
+          0.23286558770249446,
+          0.3632891962728979
+        ],
+        [
+          0.23262822330149627,
+          0.5676052163345574
+        ],
+        [
+          0.10977706792342695,
+          0.571581389811275
+        ]
+      ],
+      "physicalAspect": 1,
+      "debugColor": "#0AE2FF",
+      "captionSpacing": 0.05,
+      "captionOffsetX": 0,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "playlist": [
+        {
+          "manifest": "baphomet.json",
+          "filepath": "media/flame_square.mp4"
+        }
+      ]
+    },
+    {
+      "id": "center_right",
+      "corners": [
+        [
+          0.582197166513718,
+          0.351476757371442
+        ],
+        [
+          0.6990160589564264,
+          0.34471534798504055
+        ],
+        [
+          0.7015581388744984,
+          0.5384177794953162
+        ],
+        [
+          0.578706983496429,
+          0.5423939529720339
+        ]
+      ],
+      "physicalAspect": 1,
+      "debugColor": "#FF810A",
+      "captionSpacing": 0.05,
+      "captionOffsetX": 0,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "playlist": [
+        {
+          "manifest": "baphomet.json",
+          "filepath": "media/flame_square.mp4"
+        }
+      ]
+    },
+    {
+      "id": "bottom_left",
+      "corners": [
+        [
+          0.177988309007506,
+          0.6957553643366159
+        ],
+        [
+          0.2948072014502144,
+          0.6889939549502144
+        ],
+        [
+          0.29734928136828637,
+          0.8826963864604901
+        ],
+        [
+          0.17449812599021702,
+          0.8866725599372077
+        ]
+      ],
+      "physicalAspect": 1,
+      "debugColor": "#BE0AFF",
+      "captionSpacing": 0.05,
+      "captionOffsetX": 0,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "playlist": [
+        {
+          "manifest": "baphomet.json",
+          "filepath": "media/flame_square.mp4"
+        }
+      ]
+    },
+    {
+      "id": "bottom_right",
+      "corners": [
+        [
+          0.5341526925691499,
+          0.7096856518638238
+        ],
+        [
+          0.6509715850118581,
+          0.7029242424774224
+        ],
+        [
+          0.6535136649299301,
+          0.896626673987698
+        ],
+        [
+          0.5306625095518608,
+          0.9006028474644157
+        ]
+      ],
+      "physicalAspect": 1,
+      "debugColor": "#FF0A99",
+      "captionSpacing": 0.05,
+      "captionOffsetX": 0,
+      "inset": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "playlist": [
+        {
+          "manifest": "baphomet.json",
+          "filepath": "media/flame_square.mp4"
+        }
+      ]
+    }
+  ],
+  "animation": {
+    "cycleDuration": 4,
+    "transitionInDuration": 3,
+    "transitionOutDuration": 2,
+    "transitionDelay": 0.5,
+    "dissolveSoftness": 1.07,
+    "dissolveNoiseScale": 1.85,
+    "frameStagger": 3,
+    "zoomStart": 1.15,
+    "panSpeed": 0.03,
+    "panAspectThreshold": 1.15,
+    "maxHoldDuration": 30
+  },
+  "captions": {
+    "titleSize": 0.069,
+    "lineTwoSize": 0.043,
+    "lineGap": 0.006,
+    "color": "#FFFFFF",
+    "fadeDuration": 1.2,
+    "riseDistance": 0.02,
+    "lineTwoDelay": 0.5
+  },
+  "effects": {
+    "back": {
+      "type": "placeholder",
+      "params": {}
+    },
+    "front": {
+      "type": "placeholder",
+      "params": {}
+    }
+  }
+}

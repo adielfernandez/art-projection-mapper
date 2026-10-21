@@ -3,6 +3,7 @@
   "assetManifests": [
     "macabre.json"
   ],
+  "showType": "randomized",
   "ui": {
     "panelSide": "right"
   },
@@ -65,7 +66,8 @@
         "right": 0,
         "bottom": 0,
         "left": 0
-      }
+      },
+      "playlist": []
     },
     {
       "id": "f_fpo02",
@@ -96,7 +98,8 @@
         "right": 0,
         "bottom": 0,
         "left": 0
-      }
+      },
+      "playlist": []
     }
   ],
   "animation": {

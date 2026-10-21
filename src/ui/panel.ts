@@ -7,8 +7,9 @@ import { animationSection } from './sections/animationSection';
 import { appControls, showControls } from './sections/appControls';
 import { assetsSection } from './sections/assetsSection';
 import { configSection } from './sections/configSection';
-import type { PanelContext } from './sections/context';
+import type { PanelContext, PlaybackInfo } from './sections/context';
 import { mappingSection } from './sections/mappingSection';
+import { Thumbnails } from './thumbnails';
 
 /**
  * Side panel. Overlays the canvas without resizing it. Reads state via store
@@ -23,6 +24,7 @@ export class Panel {
   constructor(
     private store: Store,
     project: ProjectController,
+    playback: PlaybackInfo,
   ) {
     this.confirmBar = h('div', { class: 'confirm-bar' });
     this.confirmBar.hidden = true;
@@ -33,6 +35,9 @@ export class Panel {
       confirm: (message, label) => this.confirm(message, label),
       openState: new Map(),
       binder: this.binder,
+      // Created before the panel subscribes, so a project load clears it before sections rebuild.
+      thumbs: new Thumbnails(store, project),
+      playback,
     };
 
     this.el = h('aside', { class: 'panel' }, [

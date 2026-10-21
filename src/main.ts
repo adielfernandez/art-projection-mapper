@@ -29,7 +29,7 @@ const scheduler = new Scheduler(store, {
 });
 renderer.setVisualSource((id, aspect) => scheduler.visual(id, aspect));
 renderer.setCaptionSource((id) => scheduler.captionState(id));
-const panel = new Panel(store, project);
+const panel = new Panel(store, project, scheduler);
 document.body.append(panel.el);
 
 attachPointerMapping(stage, glCanvas, store);

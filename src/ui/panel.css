@@ -186,6 +186,15 @@
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
+.quad-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-weight: 400;
+}
+
 .subhead {
   margin: 0.6rem 0 0.25rem;
   font-size: 0.8rem;
@@ -513,4 +522,96 @@
 .btn.pause-toggle.paused:hover {
   background: #ffe04d;
   border-color: #ffe04d;
+}
+
+/* ---------- playlists ---------- */
+
+.playlist-block {
+  margin-top: 0.4rem;
+}
+
+.playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: 0.3rem;
+}
+
+.playlist-row + .playlist-row {
+  margin-top: 0.15rem;
+}
+
+.playlist-row.playing {
+  background: rgba(10, 132, 255, 0.18);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.playlist-row .asset-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-index {
+  width: 1.2rem;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+.playlist-buttons {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.playlist-buttons .btn.small {
+  padding: 0.1rem 0.4rem;
+}
+
+.picker {
+  margin-bottom: 0.4rem;
+  padding: 0 0.4rem 0.4rem;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.4rem, 1fr));
+  gap: 0.35rem;
+}
+
+.picker-tile {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  color: var(--text);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.picker-tile:hover {
+  border-color: var(--accent);
+}
+
+.picker-tile .thumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.picker-name {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

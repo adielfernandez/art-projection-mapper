@@ -2,6 +2,7 @@ import { WALL_QUAD_ID, type QuadId } from '../../state/schema';
 import { CORNER_NAMES, type CornerIndex } from '../../state/store';
 import { Binder, button, checkboxRow, colorRow, h, numberInput, numberRow, section, sliderRow, withHelp } from '../controls';
 import type { PanelContext } from './context';
+import { playlistBlock } from './playlistBlock';
 
 const INSET_MAX = 0.2;
 /** Caption X offset slider spans ± this many frame widths (the number field accepts any value). */
@@ -81,7 +82,7 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
       min: 0, step: 0.001, decimals: 4, sliderMin: 0, sliderMax: INSET_MAX,
     });
 
-  return section(ctx.openState, `frame:${id}`, quadTitle(`Frame ${index + 1}`, () => frame().debugColor, b), [
+  return section(ctx.openState, `frame:${id}`, quadTitle(`Frame ${index + 1}`, () => frame().debugColor, b, id), [
     pointRows(ctx, b, id),
     colorRow(b, 'Debug color', () => frame().debugColor, (v) => store.updateFrame(id, { debugColor: v })),
     numberRow(b, 'Physical aspect (w÷h)', {
@@ -109,13 +110,16 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
     insetRow('left', 'Left'),
     checkboxRow(b, 'Test pattern', () => store.isTestPatternOn(id), (v) => store.setTestPattern(id, v)),
     convexWarning(ctx, b, id),
+    playlistBlock(ctx, b, id),
   ], { class: 'quad', headerExtras: [remove] });
 }
 
-function quadTitle(text: string, color: () => string, b: Binder): HTMLElement {
+/** Section title: color swatch, name, and an optional read-only id in gray. */
+function quadTitle(text: string, color: () => string, b: Binder, id?: string): HTMLElement {
   const swatch = h('span', { class: 'swatch' });
   b.add(() => (swatch.style.background = color()));
-  return h('span', { class: 'title' }, [swatch, text]);
+  const idEl = id === undefined ? null : h('span', { class: 'quad-id', text: `(${id})`, title: 'Frame id in config.json' });
+  return h('span', { class: 'title' }, [swatch, text, idEl]);
 }
 
 /** X/Y inputs in device pixels for each corner. Clicking the corner name selects that point. */

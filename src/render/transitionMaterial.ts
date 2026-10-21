@@ -21,6 +21,7 @@ const fragment = /* glsl */ `
   uniform vec4 uInset;    // top, right, bottom, left (local units)
   uniform vec4 uView;     // texture-space center (xy) and span (zw), v up
   uniform float uInvertV;
+  uniform float uDecodeSRGB; // 1 = texture holds sRGB values the GPU didn't decode (video)
   uniform float uReveal;  // 0..1 dissolve-in progress
   uniform float uFade;    // 1 visible .. 0 black
   uniform float uSeed;
@@ -70,6 +71,8 @@ const fragment = /* glsl */ `
       vec2 tuv = uView.xy + (fuv - 0.5) * uView.zw;
       if (uInvertV > 0.5) tuv.y = 1.0 - tuv.y;
       col = texture2D(uTex, tuv).rgb;
+      // three.js uploads sRGB video as linear RGBA8 and leaves decoding to the shader.
+      if (uDecodeSRGB > 0.5) col = sRGBTransferEOTF(vec4(col, 1.0)).rgb;
 
       // Noise-mask dissolve in. Noise is in physical units so blobs are round on any frame.
       float n = clamp(0.5 + fbm(p * (5.0 / max(uNoiseScale, 0.01)) + uSeed) * 1.1, 0.0, 1.0);
@@ -104,6 +107,7 @@ export function createFrameMaterial(): THREE.ShaderMaterial {
       uInset: { value: new THREE.Vector4(0, 0, 0, 0) },
       uView: { value: new THREE.Vector4(0.5, 0.5, 1, 1) },
       uInvertV: { value: 0 },
+      uDecodeSRGB: { value: 0 },
       uReveal: { value: 1 },
       uFade: { value: 1 },
       uSeed: { value: 0 },

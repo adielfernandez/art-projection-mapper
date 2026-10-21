@@ -120,9 +120,10 @@ export function loadVideo(file: File): Promise<LoadedMedia> {
       cleanup();
       const texture = new THREE.VideoTexture(video);
       texture.colorSpace = THREE.SRGBColorSpace;
-      texture.minFilter = THREE.LinearFilter;
+      // Mipmaps (rebuilt each video frame) keep downscaled video smooth instead of aliased.
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
       texture.magFilter = THREE.LinearFilter;
-      texture.generateMipmaps = false;
+      texture.generateMipmaps = true;
       resolve({
         kind: 'video',
         texture,

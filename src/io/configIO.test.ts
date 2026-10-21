@@ -85,6 +85,41 @@ describe('parseConfig', () => {
     expect(parsed.warnings).toHaveLength(2);
   });
 
+  it('parses showType and frame playlists, defaulting both when missing', () => {
+    const cfg = defaultConfig(ASPECT);
+    cfg.showType = 'manual';
+    cfg.frames[0]!.playlist = [
+      { manifest: 'assets.json', filepath: 'media/a.jpg' },
+      { manifest: 'assets.json', filepath: 'media/a.jpg' }, // duplicates are allowed
+    ];
+    const round = parseConfig(JSON.parse(serializeConfig(cfg)), ASPECT);
+    expect(round.warnings).toEqual([]);
+    expect(round.config).toEqual(cfg);
+
+    const old = parseConfig({ schemaVersion: 1, frames: [{ id: 'x' }] }, ASPECT);
+    expect(old.warnings).toEqual([]);
+    expect(old.config.showType).toBe('randomized');
+    expect(old.config.frames[0]!.playlist).toEqual([]);
+  });
+
+  it('falls back with warnings for an invalid showType and malformed playlist entries', () => {
+    const { config, warnings } = parseConfig(
+      {
+        schemaVersion: 1,
+        showType: 'shuffle',
+        frames: [
+          { id: 'a', playlist: [{ manifest: 'm.json', filepath: 'x.jpg' }, { filepath: 'y.jpg' }, 'z.jpg'] },
+          { id: 'b', playlist: 'nope' },
+        ],
+      },
+      ASPECT,
+    );
+    expect(config.showType).toBe('randomized');
+    expect(config.frames[0]!.playlist).toEqual([{ manifest: 'm.json', filepath: 'x.jpg' }]);
+    expect(config.frames[1]!.playlist).toEqual([]);
+    expect(warnings).toHaveLength(4);
+  });
+
   it('accepts an empty frame list', () => {
     expect(parseConfig({ schemaVersion: 1, frames: [] }, ASPECT).config.frames).toEqual([]);
   });

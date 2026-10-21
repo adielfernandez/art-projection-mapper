@@ -1,9 +1,10 @@
 import type * as THREE from 'three';
-import type { AssetEntry } from '../state/schema';
+import type { AssetEntry, ShowType } from '../state/schema';
 import type { Store } from '../state/store';
 import { buildPool, mediaKind, poolMode, staticAssignments, type PoolMode } from './assetPool';
 import { loadImage, loadVideo, type ImageSizing, type LoadedMedia } from './mediaLoader';
 import { planMotion, sampleView, type MotionPlan, type View } from './motion';
+import { nextEntry, playlistMode, relocateAnchor, resolvePlaylist, START_ANCHOR, type Anchor, type PlaylistEntry } from './playlist';
 import { ShuffleBag } from './shuffleBag';
 
 /** What the renderer draws for one frame this tick. */
@@ -41,6 +42,8 @@ type PlayerState = 'loading' | 'in' | 'hold' | 'out' | 'static';
 
 interface Slot {
   uid: string;
+  /** Playlist entry key (manual show), else null. */
+  key: number | null;
   entry: AssetEntry;
   media: LoadedMedia;
   plan: MotionPlan | null;
@@ -49,6 +52,9 @@ interface Slot {
 
 interface Pending {
   uid: string;
+  /** Playlist entry key and its index when picked (manual show), else null / -1. */
+  key: number | null;
+  index: number;
   media: LoadedMedia | null;
   failed: boolean;
   cancelled: boolean;
@@ -59,6 +65,8 @@ const BLACK: FrameVisual = { texture: null, invertV: false, view: { cx: 0.5, cy:
 const VIDEO_END_GRACE = 3;
 
 class FramePlayer {
+  /** Manual show: this frame's mode (black, one asset held, or cycling). */
+  mode: PoolMode = 'empty';
   state: PlayerState = 'loading';
   t = 0;
   /** Scheduler time before which the next in-transition may not start (stagger, transition delay). */
@@ -71,6 +79,9 @@ class FramePlayer {
   holdEnd = 0;
   /** Pan/zoom length: in + hold + out, fixed when the in-transition starts. */
   motionDur = 0;
+  /** Manual show: this frame's resolved playlist, and its position in it. */
+  entries: PlaylistEntry[] = [];
+  anchor: Anchor = START_ANCHOR;
 
   constructor(readonly id: string) {}
 
@@ -92,8 +103,11 @@ class FramePlayer {
 export class Scheduler {
   private players = new Map<string, FramePlayer>();
   private bag = new ShuffleBag();
+  /** Randomized show: the pool mode shared by every frame. */
   private mode: PoolMode = 'empty';
   private signature = '';
+  /** Show type the players were set up for; null forces a fresh start. */
+  private showType: ShowType | null = null;
   private clock = 0;
   private transitionListeners = new Set<(e: TransitionEvent) => void>();
   private paused = false;
@@ -143,14 +157,15 @@ export class Scheduler {
     return () => this.transitionListeners.delete(fn);
   }
 
-  get currentMode(): PoolMode {
-    return this.mode;
-  }
-
   /** Displayed asset per frame (for captions and the panel). */
   currentAsset(frameId: string): { uid: string; entry: AssetEntry; state: PlayerState; t: number } | null {
     const p = this.players.get(frameId);
     return p?.current ? { uid: p.current.uid, entry: p.current.entry, state: p.state, t: p.t } : null;
+  }
+
+  /** Manual show: key of the playlist entry on screen in a frame, or null. */
+  playingKey(frameId: string): number | null {
+    return this.players.get(frameId)?.current?.key ?? null;
   }
 
   /**
@@ -162,7 +177,7 @@ export class Scheduler {
     const cur = p?.current;
     if (!p || !cur) return null;
     const base = { uid: cur.uid, entry: cur.entry };
-    if (this.mode === 'static') return { ...base, sinceIn: null, fade: 1 };
+    if (this.modeOf(p) === 'static') return { ...base, sinceIn: null, fade: 1 };
     switch (p.state) {
       case 'in':
         return { ...base, sinceIn: p.t - p.inDur, fade: 1 };
@@ -180,6 +195,7 @@ export class Scheduler {
     for (const p of this.players.values()) p.release();
     this.players.clear();
     this.signature = '';
+    this.showType = null;
     this.bag = new ShuffleBag();
     this.sync();
   }
@@ -188,7 +204,6 @@ export class Scheduler {
 
   private sync(): void {
     const cfg = this.store.config;
-    const pool = buildPool(this.store.manifests, this.store.runtime.assetErrors).map((p) => p.uid);
     const frameIds = cfg.frames.map((f) => f.id);
 
     // Remove players for deleted frames.
@@ -199,6 +214,65 @@ export class Scheduler {
       }
     }
 
+    // Switching show type starts every frame over.
+    const fresh = this.showType !== cfg.showType;
+    if (fresh) {
+      for (const p of this.players.values()) p.release();
+      this.players.clear();
+      this.showType = cfg.showType;
+      this.signature = '';
+      this.mode = 'empty';
+      this.bag = new ShuffleBag();
+    }
+    if (cfg.showType === 'manual') this.syncManual(frameIds, fresh);
+    else this.syncRandomized(frameIds);
+  }
+
+  /**
+   * Manual show: each frame plays its own playlist. A frame's mode follows its playable entry
+   * count (0 black, 1 static, more cycling), and a change of mode restarts that frame. Other
+   * edits apply at the next transition: the asset on screen finishes, and a preloaded next asset
+   * that is no longer next is dropped. A static frame swaps to a new single asset right away.
+   */
+  private syncManual(frameIds: string[], fresh: boolean): void {
+    const cfg = this.store.config;
+    const { manifests } = this.store;
+    const errors = this.store.runtime.assetErrors;
+    const stagger = cfg.animation.frameStagger;
+    frameIds.forEach((id, i) => {
+      const frame = cfg.frames[i]!;
+      const p = this.player(id);
+      p.entries = resolvePlaylist(frame.playlist, this.store.playlistKeys(id), manifests, errors);
+      p.anchor = relocateAnchor(p.entries, p.anchor);
+      const mode = playlistMode(p.entries);
+      if (mode !== p.mode) {
+        p.release();
+        p.mode = mode;
+        p.t = 0;
+        p.state = mode === 'static' ? 'static' : 'loading';
+        // Stagger frames only when the whole show starts; a single frame changing mode starts now.
+        p.startAt = this.clock + (fresh ? i * stagger : 0);
+      }
+
+      if (mode === 'static') {
+        const j = p.entries.findIndex((e) => e.uid);
+        const e = p.entries[j]!;
+        p.anchor = { key: e.key, index: j }; // cycling continues after it if more are added
+        if (p.current?.uid === e.uid || p.next?.uid === e.uid) return;
+        this.cancelNext(p);
+        this.load(p, e.uid!, e.key, j);
+      } else if (mode === 'cycling' && p.next) {
+        const want = p.entries[nextEntry(p.entries, p.anchor)];
+        if (!want || want.key !== p.next.key || want.uid !== p.next.uid) this.cancelNext(p);
+        else p.next.index = p.entries.indexOf(want);
+      }
+    });
+  }
+
+  /** Randomized show: one shared pool, shuffled across frames. */
+  private syncRandomized(frameIds: string[]): void {
+    const cfg = this.store.config;
+    const pool = buildPool(this.store.manifests, this.store.runtime.assetErrors).map((p) => p.uid);
     const mode = poolMode(pool.length, frameIds.length);
     const sig = `${mode}|${pool.join(',')}|${frameIds.join(',')}`;
     if (sig === this.signature) return;
@@ -222,11 +296,7 @@ export class Scheduler {
           p.state = 'static';
         }
         if (p.current?.uid === want || p.next?.uid === want) continue;
-        if (p.next) {
-          p.next.cancelled = true;
-          p.next.media?.dispose();
-          p.next = null;
-        }
+        this.cancelNext(p);
         this.load(p, want);
       }
       return;
@@ -245,11 +315,21 @@ export class Scheduler {
         p.startAt = this.clock + i * stagger;
       } else if (existing.next && !poolSet.has(existing.next.uid)) {
         // A queued asset left the pool (error or edit): pick again.
-        existing.next.cancelled = true;
-        existing.next.media?.dispose();
-        existing.next = null;
+        this.cancelNext(existing);
       }
     });
+  }
+
+  /** A frame's mode: shared by all frames in a randomized show, per frame in a manual one. */
+  private modeOf(p: FramePlayer): PoolMode {
+    return this.showType === 'manual' ? p.mode : this.mode;
+  }
+
+  private cancelNext(p: FramePlayer): void {
+    if (!p.next) return;
+    p.next.cancelled = true;
+    p.next.media?.dispose();
+    p.next = null;
   }
 
   private player(id: string): FramePlayer {
@@ -278,8 +358,8 @@ export class Scheduler {
     };
   }
 
-  private load(p: FramePlayer, uid: string): void {
-    const pending: Pending = { uid, media: null, failed: false, cancelled: false };
+  private load(p: FramePlayer, uid: string, key: number | null = null, index = -1): void {
+    const pending: Pending = { uid, key, index, media: null, failed: false, cancelled: false };
     p.next = pending;
     const found = this.store.findAsset(uid);
     if (!found) {
@@ -314,9 +394,18 @@ export class Scheduler {
     );
   }
 
-  /** Cycling: choose the next asset for a frame, excluding anything shown or loading anywhere. */
+  /**
+   * Cycling: choose the next asset for a frame. Manual: the next playable playlist entry.
+   * Randomized: from the shuffle bag, excluding anything shown or loading anywhere.
+   */
   private trySelect(p: FramePlayer): void {
-    if (p.next || this.mode !== 'cycling') return;
+    if (p.next || this.modeOf(p) !== 'cycling') return;
+    if (this.showType === 'manual') {
+      const j = nextEntry(p.entries, p.anchor);
+      const e = p.entries[j];
+      if (e?.uid) this.load(p, e.uid, e.key, j);
+      return;
+    }
     const exclude = new Set<string>();
     for (const o of this.players.values()) {
       if (o.current) exclude.add(o.current.uid);
@@ -333,8 +422,9 @@ export class Scheduler {
     this.clock += dt;
     for (const p of this.players.values()) {
       p.t += dt;
-      if (this.mode === 'static') this.updateStatic(p);
-      else if (this.mode === 'cycling') this.updateCycling(p);
+      const mode = this.modeOf(p);
+      if (mode === 'static') this.updateStatic(p);
+      else if (mode === 'cycling') this.updateCycling(p);
     }
   }
 
@@ -343,7 +433,7 @@ export class Scheduler {
     if (!n?.media) return;
     p.current?.media.dispose();
     const entry = this.store.findAsset(n.uid)?.entry ?? { filepath: '' };
-    p.current = { uid: n.uid, entry: { ...entry }, media: n.media, plan: null, seed: Math.random() * 100 };
+    p.current = { uid: n.uid, key: n.key, entry: { ...entry }, media: n.media, plan: null, seed: Math.random() * 100 };
     p.next = null;
     const v = n.media.video;
     if (v) {
@@ -372,8 +462,9 @@ export class Scheduler {
           },
           anim,
         );
-        p.current = { uid: n.uid, entry, media: n.media, plan, seed: Math.random() * 100 };
+        p.current = { uid: n.uid, key: n.key, entry, media: n.media, plan, seed: Math.random() * 100 };
         p.next = null;
+        if (n.key !== null) p.anchor = { key: n.key, index: n.index };
         p.state = 'in';
         p.t = 0;
         p.inDur = anim.transitionInDuration;
@@ -437,7 +528,7 @@ export class Scheduler {
     const m = cur.media;
     const { dissolveSoftness: softness, dissolveNoiseScale: noiseScale } = this.store.config.animation;
     const base = { texture: m.texture, invertV: m.invertV, seed: cur.seed, softness, noiseScale };
-    if (this.mode === 'static') {
+    if (this.modeOf(p) === 'static') {
       return { ...base, view: sampleView(null, m.aspect, frameAspect, 0), reveal: 1, fade: 1 };
     }
     let reveal = 1;

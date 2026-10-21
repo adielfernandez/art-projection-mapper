@@ -15,6 +15,12 @@ export interface Inset {
   left: number;
 }
 
+/** A playlist entry: an asset identified by its manifest (project-relative path) and filepath. */
+export interface PlaylistItem {
+  manifest: string;
+  filepath: string;
+}
+
 export interface FrameConfig {
   id: string;
   corners: Corners;
@@ -27,6 +33,8 @@ export interface FrameConfig {
   captionOffsetX: number;
   /** Frame-local units. */
   inset: Inset;
+  /** Manual show: assets this frame plays, in order. Ignored in randomized shows. */
+  playlist: PlaylistItem[];
 }
 
 export interface WallQuadConfig {
@@ -76,9 +84,14 @@ export interface EffectLayerConfig {
 
 export type PanelSide = 'left' | 'right';
 
+/** randomized: the shared pool is shuffled across frames. manual: each frame plays its own playlist. */
+export type ShowType = 'randomized' | 'manual';
+export const SHOW_TYPES: readonly ShowType[] = ['randomized', 'manual'];
+
 export interface Config {
   schemaVersion: number;
   assetManifests: string[];
+  showType: ShowType;
   ui: { panelSide: PanelSide };
   global: {
     backgroundColor: string;

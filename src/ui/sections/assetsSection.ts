@@ -1,11 +1,6 @@
-import { mediaKind } from '../../content/assetPool';
-import { makeThumbnail } from '../../content/mediaLoader';
-import type { ProjectController } from '../../io/projectController';
-import type { Store } from '../../state/store';
 import { Binder, button, checkboxRow, h, section, textRow } from '../controls';
+import type { Thumbnails } from '../thumbnails';
 import type { PanelContext } from './context';
-
-const THUMB_PX = 96;
 
 /**
  * Assets: manifests (grouped), each asset editable live. Save overwrites every
@@ -19,7 +14,7 @@ export function assetsSection(ctx: PanelContext): HTMLElement {
   const message = h('div', { class: 'message' });
   const list = h('div', { class: 'manifests' });
   const listBinder = new Binder();
-  const thumbs = new ThumbnailQueue(store, project);
+  const { thumbs } = ctx;
   let signature = '';
 
   const rebuild = () => {
@@ -27,7 +22,6 @@ export function assetsSection(ctx: PanelContext): HTMLElement {
     if (sig === signature) return;
     signature = sig;
     listBinder.clear();
-    thumbs.clear();
     if (store.manifests.length === 0) {
       const hint = store.runtime.folderName
         ? 'No asset manifests are listed in config.json ("assetManifests").'
@@ -53,7 +47,7 @@ export function assetsSection(ctx: PanelContext): HTMLElement {
   return section(ctx.openState, 'assets', 'Assets', [h('div', { class: 'button-row' }, [save]), message, list]);
 }
 
-function manifestGroup(ctx: PanelContext, b: Binder, thumbs: ThumbnailQueue, path: string): HTMLElement {
+function manifestGroup(ctx: PanelContext, b: Binder, thumbs: Thumbnails, path: string): HTMLElement {
   const { store } = ctx;
   const manifest = () => store.manifests.find((m) => m.path === path);
   const m = manifest()!;
@@ -95,7 +89,7 @@ function manifestGroup(ctx: PanelContext, b: Binder, thumbs: ThumbnailQueue, pat
   return details;
 }
 
-function assetItem(ctx: PanelContext, b: Binder, thumbs: ThumbnailQueue, uid: string): HTMLElement {
+function assetItem(ctx: PanelContext, b: Binder, thumbs: Thumbnails, uid: string): HTMLElement {
   const { store } = ctx;
   const entry = () => store.findAsset(uid)?.entry;
   const thumb = thumbs.slot(uid);
@@ -135,65 +129,4 @@ function assetItem(ctx: PanelContext, b: Binder, thumbs: ThumbnailQueue, uid: st
     checkboxRow(b, 'Pan', () => !!entry()?.pan, (v) => store.updateAsset(uid, { pan: v })),
     errText,
   ], { class: 'asset', headerExtras: [err] });
-}
-
-/** Generates thumbnails one at a time (decoding happens in the worker). */
-class ThumbnailQueue {
-  private slots = new Map<string, HTMLElement>();
-  private done = new Set<string>();
-  private queue: string[] = [];
-  private running = false;
-  private generation = 0;
-
-  constructor(
-    private store: Store,
-    private project: ProjectController,
-  ) {}
-
-  slot(uid: string): HTMLElement {
-    const el = h('span', { class: 'thumb' });
-    this.slots.set(uid, el);
-    return el;
-  }
-
-  clear(): void {
-    this.generation++;
-    this.slots.clear();
-    this.done.clear();
-    this.queue.length = 0;
-  }
-
-  request(uid: string, force = false): void {
-    if (force) this.done.delete(uid);
-    if (this.done.has(uid) || this.queue.includes(uid)) return;
-    this.queue.push(uid);
-    void this.pump();
-  }
-
-  private async pump(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    const gen = this.generation;
-    while (this.queue.length && gen === this.generation) {
-      const uid = this.queue.shift()!;
-      this.done.add(uid);
-      const el = this.slots.get(uid);
-      if (!el) continue;
-      const found = this.store.findAsset(uid);
-      const kind = found ? mediaKind(found.entry.filepath) : null;
-      if (!found || !kind) {
-        el.replaceChildren('?');
-        continue;
-      }
-      try {
-        const file = await this.project.getMediaFile(found.manifest.path, found.entry.filepath);
-        const canvas = await makeThumbnail(file, kind, THUMB_PX);
-        if (gen === this.generation) el.replaceChildren(canvas);
-      } catch {
-        if (gen === this.generation) el.replaceChildren('✕');
-      }
-    }
-    this.running = false;
-    if (this.queue.length) void this.pump();
-  }
 }

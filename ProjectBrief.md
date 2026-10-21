@@ -123,6 +123,7 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
 {
   "schemaVersion": 1,
   "assetManifests": ["pools/paintings.json", "pools/videos.json"],
+  "showType": "randomized",
   "ui": {
     "panelSide": "left"
   },
@@ -146,7 +147,10 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
       "debugColor": "#FF453A",
       "captionSpacing": 0.05,
       "captionOffsetX": 0,
-      "inset": { "top": 0, "right": 0, "bottom": 0, "left": 0 }
+      "inset": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+      "playlist": [
+        { "manifest": "pools/paintings.json", "filepath": "media/nightmare.jpg" }
+      ]
     }
   ],
   "animation": {
@@ -180,6 +184,8 @@ Field notes:
 - **`physicalAspect`** is the physical width ÷ height. The default is `0.6571` (23″ × 35″).
 - **`captionSpacing` (panel: "Caption Y offset"), `captionOffsetX` (panel: "Caption X offset"; may be negative), `titleSize`, `lineTwoSize`, `lineGap` and `riseDistance`** are in units of the frame's bottom-edge length measured in wall space (one "frame width").
 - **`inset`** values are in frame-local units. They shrink the visible artwork area inward from each edge to hide light spill onto the frame molding. The inset band renders black.
+- **`showType`** is `"randomized"` (default) or `"manual"`. See 5.3.
+- **`playlist`** (per frame, default `[]`) lists the assets the frame plays in a manual show, in order. Each entry names an asset by its manifest path (as listed in `assetManifests`) and its `filepath` in that manifest; if several assets share a filepath, the first is used. Duplicates are allowed, within one playlist and across frames. Entries whose asset can't be found are kept and skipped. Playlists are kept, but ignored, in a randomized show.
 - **`panSpeed`** is in frame widths per second.
 - **Durations** are in seconds.
 - **`id`** is generated once and never reused. Displayed frame numbers are list positions and may renumber after a removal; ids and settings never shift.
@@ -287,6 +293,17 @@ Field notes:
 - "Remove" in a frame's section header deletes it immediately. It is undoable via the config dirty flag only; no confirmation dialog.
 
 ### 5.3 Content selection
+
+**Show type** (`config.showType`, switchable live in the panel; switching restarts every frame):
+- **Randomized:** the rules below. All frames share one pool.
+- **Manual:** each frame plays its own `playlist`, in order, independently of the other frames. A frame's mode follows the number of playable entries in its playlist (entries that are missing or failed to load don't count):
+  - **0:** the frame stays black.
+  - **1:** static, with the same rules as static mode below.
+  - **2 or more:** the cycle in 5.4, stepping through the playlist in order and looping. No exclusion between frames. `frameStagger` applies when the show starts.
+  - **Live edits** apply at the next transition: the asset on screen finishes its cycle, then the frame continues with the updated list. The position is tracked by entry, so a moved entry keeps its place in the sequence, and removing the entry on screen plays the one that took its place next. Changes that move a frame between 0, 1 and 2+ entries apply immediately; a static frame swaps to a new single asset immediately.
+  - **Asset filepath edits** in the Assets panel carry over to playlist entries (marking the config modified).
+
+The rest of this section describes the randomized show.
 
 **Pool.** The pool is the concatenation of all assets from all manifests, minus assets that failed to load.
 
@@ -450,7 +467,7 @@ The effect content is TBD. Build the framework and one placeholder effect to val
 **Sections**, each with a header and collapsible:
 
 1. **App controls:** close button, left/right switch, unsaved-change indicators.
-2. **Config:** Load (open project folder), Save. Shows the current folder name.
+2. **Config:** Load (open project folder), Save. Shows the current folder name. Show type switch (Randomized / Manual).
 3. **Mapping:**
    - Global: background color, debug stroke width, point radius, crosshair size.
    - Wall quad (collapsible): 4 control points with X/Y inputs, debug color, test pattern toggle.
@@ -459,10 +476,11 @@ The effect content is TBD. Build the framework and one placeholder effect to val
      - 4 control points with X/Y inputs
      - debug color picker
      - physical aspect (number input)
-     - caption spacing (slider and number)
+     - caption X offset and caption Y offset (slider and number)
      - per-edge inset (4 sliders)
      - test pattern toggle
      - convexity warning when applicable
+     - playlist (manual show only; hidden when randomized): one row per entry with thumbnail, title, and ↑ ↓ × buttons; the entry on screen is highlighted; missing or failed entries are flagged. "+ Add asset" opens a thumbnail picker of every loaded asset, grouped by manifest; clicking one appends it.
    - "Add new frame" button.
 4. **Assets:**
    - Save button (overwrites modified manifests).
@@ -566,7 +584,7 @@ Copy this section into `CLAUDE.md`.
 These were not explicitly specified and were decided during brief writing:
 
 1. An image with `pan = true` whose aspect does not exceed the threshold falls back to zoom if `zoom = true`, otherwise static.
-2. In static mode (pool ≤ frames), images use static cover with no zoom or pan, videos loop, and captions appear without animation.
+2. In static mode (pool ≤ frames, or a manual playlist with one playable entry), images use static cover with no zoom or pan, videos loop, and captions appear without animation.
 3. `maxHoldDuration` applies only to panning images, not to video.
 4. The cursor stays hidden whenever the panel is closed but cursor shows when debug visuals are shown with `D`. Pressing `D` to hide debug visuals also hides cursor. 
 5. Test pattern toggles are runtime only and not saved to config.
