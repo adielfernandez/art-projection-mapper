@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Art Projector is a browser-based projection mapping app. A projector displays a full-screen Chrome window (16:9) onto a wall holding physical picture frames in portrait orientation. The app warps artworks (images and videos) onto each frame, cycles them randomly from one or more asset pools, shows optional captions on the wall below each frame, and plays ambient animations across the whole projected area when new artwork appears.
+Art Projector is a browser-based projection mapping app. A projector displays a full-screen Chrome window (16:9) onto a wall holding physical picture frames in portrait orientation. The app warps artworks (images and videos) onto each frame, cycles them randomly from one or more asset pools, shows optional captions on the wall below each frame, and can play a wallpaper playlist across the wall behind the frames. The app is focused on mapping and showing the user's content; ambient effect layers are out of scope.
 
 The highest priority is mapping precision and mapping UX. The user must be able to align each frame's projected content tightly to a physical rectangle.
 
@@ -15,7 +15,7 @@ Target: desktop Chrome, full screen, FHD or 4K output. No mobile or responsive l
 | Layer | Choice | Notes |
 |---|---|---|
 | Build | Vite | Dev server and production build. App served from `localhost`. |
-| Language | TypeScript, `strict: true` | Config and manifest schemas are typed. |
+| Language | TypeScript, `strict: true` | Config and asset pool schemas are typed. |
 | Rendering | Three.js, `WebGLRenderer` (WebGL2) | Pin an exact version in `package.json`. Do not use WebGPURenderer. |
 | UI panel | Vanilla DOM + CSS | Native `<details>/<summary>`, `<input type="color">`, `<input type="number">`, `<input type="range">`, checkboxes. No UI framework, no GUI library. |
 | Captions | Canvas2D rendered into a Three.js texture | No text library. |
@@ -31,7 +31,7 @@ Approved dependencies are exactly: `three`, `@types/three`, `vite`, `typescript`
 
 ### 3.1 State
 
-- One serializable **project state** object is the single source of truth. Saving the config means serializing the config portion of this state, and saving assets means serializing the manifest portion.
+- One serializable **project state** object is the single source of truth. Saving the config means serializing the config portion of this state, and saving assets means serializing the asset pool portion.
 - **Runtime-only state** is kept separate and never saved. It includes:
   - the selected control point
   - debug visibility
@@ -40,7 +40,7 @@ Approved dependencies are exactly: `three`, `@types/three`, `vite`, `typescript`
   - dirty flags
   - playback state
 - All mutations go through store actions. The renderer and the panel subscribe to the store; neither mutates state directly.
-- There are two dirty flags, one for the config and one for the asset manifests. Each is cleared only by its own Save.
+- There are two dirty flags, one for the config and one for the asset pools. Each is cleared only by its own Save.
 - **No autosave.** Nothing is written to disk except by an explicit Save button press.
 
 ### 3.2 Coordinate spaces
@@ -50,7 +50,7 @@ Approved dependencies are exactly: `three`, `@types/three`, `vite`, `typescript`
 | Canvas-normalized | `[0,1] × [0,1]`, origin top-left, y down | Storage of all control points in config. Resolution independent. |
 | Device pixels | Canvas-normalized × canvas size in device pixels (CSS px × `devicePixelRatio`) | Panel numeric display, nudging, hit testing. |
 | Frame-local | Origin bottom-left, x right, y up. Width = 1, height = `1 / physicalAspect` | Artwork, test pattern. One per frame. |
-| Wall-local | Origin bottom-left, x right, y up. Width = 1, height = 1 / canvas aspect | Ambient effects (both layers), captions, wall test pattern. |
+| Wall-local | Origin bottom-left, x right, y up. Width = 1, height = 1 / canvas aspect | Wallpaper (the wall's playlist), captions, wall test pattern. |
 
 ### 3.3 Warping: homography (not bilinear)
 
@@ -85,11 +85,10 @@ Each quad (every frame plus the wall quad) maps its local rectangle to its four 
 ### 3.4 Render order (per animation frame)
 
 1. Clear to the configured background color (default black).
-2. **Back effect layer**, drawn in wall space.
-3. **Frames**, each drawn in frame space with its own homography camera: artwork, transition mask, per-edge inset masking, and the test pattern when enabled. Frames draw in `frames` list order, so later frames are on top where they overlap. A frame with `blend: "add"` adds its light to what's behind it instead of covering it, so its black areas are transparent.
+2. **Wall**, drawn in wall space with its homography camera: the wallpaper playlist (nothing while it is empty, so the background color shows), and the wall test pattern when enabled.
+3. **Frames**, each drawn in frame space with its own homography camera: artwork, transition mask, and the test pattern when enabled. Frames draw in `frames` list order, so later frames are on top where they overlap. A frame with `blend: "add"` adds its light to what's behind it instead of covering it, so its black areas are transparent.
 4. **Captions**, drawn in wall space.
-5. **Front effect layer**, drawn in wall space.
-6. **Debug overlay**, drawn in screen space on a separate 2D canvas layered above the WebGL canvas, sized to device pixels.
+5. **Debug overlay**, drawn in screen space on a separate 2D canvas layered above the WebGL canvas, sized to device pixels.
 
 Renderer setup:
 - `antialias: true`
@@ -99,7 +98,7 @@ Renderer setup:
 
 The main loop uses `requestAnimationFrame`. Clamp delta time (for example to a 100 ms maximum) so a stall does not cause animation jumps. Do not drive animation timing with `setTimeout`.
 
-Performance target: steady 60 fps at 4K output with two frames, one playing video, and active effects.
+Performance target: steady 60 fps at 4K output with two frames and the wallpaper, one of them playing video.
 
 ---
 
@@ -112,8 +111,8 @@ Bump `schemaVersion` on any breaking change and write a migration function. Ask 
 The user opens a **project folder** with `showDirectoryPicker`. All reads and writes go through that folder's directory handle.
 
 - The config is always `config.json` at the folder root.
-- Asset manifests are referenced from the config by paths relative to the folder root.
-- Media `filepath` values are relative to the location of the manifest file that lists them.
+- Asset pools (JSON files listing media, section 4.3) are referenced from the config by paths relative to the folder root.
+- Media `filepath` values are relative to the location of the asset pool file that lists them.
 - Media is loaded via `fileHandle.getFile()` and `URL.createObjectURL()`. Revoke object URLs when the media is released.
 - There is no "Save As". The user duplicates and renames project folders manually.
 
@@ -121,8 +120,8 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
 
 ```json
 {
-  "schemaVersion": 1,
-  "assetManifests": ["pools/paintings.json", "pools/videos.json"],
+  "schemaVersion": 2,
+  "assetPools": ["pools/paintings.json", "pools/videos.json"],
   "showType": "randomized",
   "ui": {
     "panelSide": "left"
@@ -137,7 +136,10 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
   },
   "wallQuad": {
     "corners": [[0, 0], [1, 0], [1, 1], [0, 1]],
-    "debugColor": "#0A84FF"
+    "debugColor": "#0A84FF",
+    "playlist": [
+      { "pool": "pools/walls.json", "filepath": "media/damask.jpg" }
+    ]
   },
   "frames": [
     {
@@ -147,14 +149,14 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
       "debugColor": "#FF453A",
       "captionSpacing": 0.05,
       "captionOffsetX": 0,
-      "inset": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
       "playlist": [
-        { "manifest": "pools/paintings.json", "filepath": "media/nightmare.jpg" }
+        { "pool": "pools/paintings.json", "filepath": "media/nightmare.jpg" }
       ],
       "blend": "normal"
     }
   ],
   "animation": {
+    "transitionInStyle": "noise",
     "cycleDuration": 12,
     "transitionInDuration": 1.5,
     "transitionOutDuration": 1.0,
@@ -172,10 +174,6 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
     "fadeDuration": 1.2,
     "riseDistance": 0.02,
     "lineTwoDelay": 0.5
-  },
-  "effects": {
-    "back": { "type": "placeholder", "params": {} },
-    "front": { "type": "placeholder", "params": {} }
   }
 }
 ```
@@ -184,19 +182,23 @@ Field notes:
 - **`corners`** are in canvas-normalized coordinates, ordered TL, TR, BR, BL relative to the physical frame.
 - **`physicalAspect`** is the physical width ÷ height. The default is `0.6571` (23″ × 35″).
 - **`captionSpacing` (panel: "Caption Y offset"), `captionOffsetX` (panel: "Caption X offset"; may be negative), `titleSize`, `lineTwoSize`, `lineGap` and `riseDistance`** are in units of the frame's bottom-edge length measured in wall space (one "frame width").
-- **`inset`** values are in frame-local units. They shrink the visible artwork area inward from each edge to hide light spill onto the frame molding. The inset band renders black.
+- **`inset`** (per-edge masking) was removed: corrections are made with the control points. An `inset` key in an older file is ignored and dropped on the next save.
 - **`showType`** is `"randomized"` (default) or `"manual"`. See 5.3.
-- **`playlist`** (per frame, default `[]`) lists the assets the frame plays in a manual show, in order. Each entry names an asset by its manifest path (as listed in `assetManifests`) and its `filepath` in that manifest; if several assets share a filepath, the first is used. Duplicates are allowed, within one playlist and across frames. Entries whose asset can't be found are kept and skipped. Playlists are kept, but ignored, in a randomized show.
-- **`blend`** (per frame, `"normal"` or `"add"`, default `"normal"`). `"normal"` covers whatever is behind the frame. `"add"` adds the frame's light to it, so black (including black gaps, insets and an empty frame) is transparent and frames drawn earlier show through. Meant for bright content on black (fire, glows). Additive content only adds light, so it cannot hide what's behind it, and overlapping bright areas can clip to white.
+- **`playlist`** (per frame, default `[]`) lists the assets the frame plays in a manual show, in order. Each entry names an asset by its asset pool path (`pool`, as listed in `assetPools`) and its `filepath` in that pool; if several assets share a filepath, the first is used. Duplicates are allowed, within one playlist and across frames. Entries whose asset can't be found are kept and skipped. Playlists are kept, but ignored, in a randomized show.
+- **`blend`** (per frame, `"normal"` or `"add"`, default `"normal"`). `"normal"` covers whatever is behind the frame. `"add"` adds the frame's light to it, so black (including black gaps between assets and an empty frame) is transparent and frames drawn earlier show through. Meant for bright content on black (fire, glows). Additive content only adds light, so it cannot hide what's behind it, and overlapping bright areas can clip to white.
 - **`panSpeed`** is in frame widths per second.
 - **Durations** are in seconds.
 - **`id`** is generated once and never reused. Displayed frame numbers are list positions and may renumber after a removal; ids and settings never shift.
 - **Starting values.** All numeric defaults above are starting values to tune on site.
 - **Distinct default colors.** New frames get a default debug color distinct from existing frames.
 
+**Migration from schemaVersion 1:** `assetManifests` is renamed to `assetPools`, and each playlist entry's `manifest` to `pool`. Version 1 files load normally and are written as version 2 on the next Save.
+
 **Default project** (no `config.json` in the folder, or no folder opened yet): two frames side by side, centered vertically, each about 50% of canvas height, with corners shaped by `physicalAspect`. `config.json` is created on the first Save.
 
-### 4.3 Asset manifest
+### 4.3 Asset pool
+
+An asset pool is a JSON file listing media. A project can have several (for example one for paintings and one for videos); the config lists them in `assetPools`.
 
 ```json
 {
@@ -219,8 +221,8 @@ Field notes:
   - image: `.jpg .jpeg .png .webp .avif`
   - video: `.mp4 .webm`
   - an unknown extension is treated as an asset error
-- `zoom` and `pan` are optional booleans and default to `false`.
-- Duplicate assets, the same file in multiple manifests or listed twice, are treated as separate assets. They may appear on screen at the same time.
+- `zoom`, `pan` and `wallOnly` are optional booleans and default to `false`. `wallOnly` reserves an asset for the wall's wallpaper (section 5.3). New assets added in the panel are written with all three.
+- Duplicate assets, the same file in multiple asset pools or listed twice, are treated as separate assets. They may appear on screen at the same time.
 - Recommend H.264 MP4 or VP9/AV1 WebM to the user in the README. HEVC support in Chrome depends on hardware.
 
 ---
@@ -229,17 +231,28 @@ Field notes:
 
 ### 5.1 Startup and file I/O
 
-- **On launch with a stored folder handle:** the app keeps the last project folder's directory handle in IndexedDB. This is a pointer only, not saved state. If one exists, show a "Reopen project: <folder name>" button. Chrome requires a user gesture to re-grant permission. On grant, load `config.json` and all manifests from disk.
-- **On launch without a handle:** show the default project and an "Open project folder" button.
+- **On launch with a stored folder handle:** the app keeps the last project folder's directory handle in IndexedDB. This is a pointer only, not saved state. If one exists, show a "Reopen Show: <folder name>" button. Chrome requires a user gesture to re-grant permission. On grant, load `config.json` and all asset pools from disk.
+- **On launch** (and when a folder without `config.json` is opened) the app shows the default project as a new show: two frames, with the wall's and every frame's test pattern on. Content can be added before the show has a folder (see *Adding content*); the first Save (Show, Asset Pool or All Assets) asks for a folder, confirming before overwriting any file it is about to write that already exists there, and that folder becomes the show's folder.
 - **Panel Config section:**
-  - **Load** opens a project folder.
-  - **Save** writes `config.json`.
-- **Panel Asset section:** has its own **Save**, which overwrites every modified manifest file.
+  - **Load Show** opens a project folder.
+  - **Save Show** writes `config.json`.
+- **Panel Asset section:** each asset pool has its own **Save Asset Pool**, which copies that pool's staged files (below) into the folder and then writes the pool file. **Save All Assets** does this for every modified pool and is shown only when there are two or more pools.
+- **Adding content** (section 5.6) never writes to disk by itself, and works with or without a folder:
+  - A file picked or dropped from **inside** the project folder is listed by its path relative to the pool (found with `FileSystemDirectoryHandle.resolve`). Nothing is copied.
+  - A file from **outside** the folder is *staged*: held in memory under `media/<name>` next to the pool, playable and thumbnailed from memory, and copied there on that pool's next save. If the name is taken on disk or by another staged file (compared without case), the copy is numbered: `name (2).ext`. Names are checked again at save time (a new show's folder is only known then): a taken path gets the next numbered name, and playlists follow. A save never overwrites an existing media file.
+  - With no pool chosen (a show with no pools yet, or the empty Assets section), files go into a new `assets.json` pool.
+  - A file the pool already lists is reused instead of added twice. Unsupported types and folders are skipped with a message.
+  - Loading another project discards staged files (after the usual unsaved-changes confirmation).
+- **Removing content:** × on an asset removes it from its pool. The media file is never deleted. Playlist entries that used it are kept and flagged missing.
+- **Removing an asset pool:** a red × in the pool's header removes it from the show and from `assetPools` (config modified). A pool with unsaved changes that lists assets asks for confirmation first; an empty pool is removed at once (nothing would be lost). The pool file and media stay on disk; playlist entries that used it are flagged missing. The × is hidden while only one pool remains.
+- **New assets** are written with `filepath`, `zoom: false` and `pan: false`; `title`, `artist` and `year` once filled in.
+- **Adding an asset pool:** a name typed in the Asset section becomes `<name>.json` at the project root and is added to `assetPools` (config modified). If that file exists it is loaded as is; otherwise an empty pool is created and written on its first save. Pool names are compared without case, so `Art.json` and `art.json` can't both be added.
+- Files dropped anywhere outside a drop zone are ignored, so the browser never navigates away from the show.
 - **Unsaved changes:**
   - An indicator in the panel header for each of config and assets.
   - A `beforeunload` confirmation when either is dirty.
 - **Errors:**
-  - A missing or invalid manifest shows an error in the Asset section, and the app continues with the remaining manifests.
+  - A missing or invalid asset pool shows an error in the Asset section, and the app continues with the remaining pools.
   - Media that fails to load is flagged on that asset in the panel and skipped by the scheduler.
 
 ### 5.2 Mapping
@@ -283,12 +296,16 @@ Field notes:
 
 **Test pattern:**
 - Toggled per frame (and for the wall quad) inside that quad's panel section. Runtime only, not saved.
+- On for every quad in a new show (see 5.1). While any test pattern is on, a newly added frame starts with its own on. Loading a show turns them all off.
+- Turned off automatically when content arrives: adding an item to a frame's or the wall's playlist turns off that quad's pattern; in a randomized show, adding files to an asset pool turns off every frame's pattern (not the wall's, which only plays its own playlist).
 - Rendered through the homography. It consists of:
   - a square grid that is uniform in physical units (it uses `physicalAspect`, so cells are physically square)
   - a checkerboard
   - a center crosshair
   - a 1-unit border on the frame edge
 - On the wall, straight evenly spaced grid lines confirm the mapping.
+
+**Rotating a frame:** "↻ Rotate 90° clockwise" in a frame's section turns its four points a quarter turn clockwise about their centroid, in device pixels (so the shape is kept on a 16:9 canvas). Points keep their corner slots, so the artwork and captions turn with the frame. If a point ends up off screen, the whole frame is translated back in, each axis on its own, keeping its shape; on an axis where it is larger than the viewport it is centered. One undo step.
 
 **Adding and removing frames:**
 - "Add new frame" creates a frame centered on the canvas at the default size, with the next number and a new color.
@@ -298,7 +315,7 @@ Field notes:
 ### 5.3 Content selection
 
 **Show type** (`config.showType`, switchable live in the panel; switching restarts every frame):
-- **Randomized:** the rules below. All frames share one pool.
+- **Randomized:** the rules below. All frames share every playable asset.
 - **Manual:** each frame plays its own `playlist`, in order, independently of the other frames. A frame's mode follows the number of playable entries in its playlist (entries that are missing or failed to load don't count):
   - **0:** the frame stays black.
   - **1:** static, with the same rules as static mode below.
@@ -306,14 +323,18 @@ Field notes:
   - **Live edits** apply at the next transition: the asset on screen finishes its cycle, then the frame continues with the updated list. The position is tracked by entry, so a moved entry keeps its place in the sequence, and removing the entry on screen plays the one that took its place next. Changes that move a frame between 0, 1 and 2+ entries apply immediately; a static frame swaps to a new single asset immediately.
   - **Asset filepath edits** in the Assets panel carry over to playlist entries (marking the config modified).
 
+**Wallpaper** (`wallQuad.playlist`): the wall plays its own playlist in **both** show types, with the same rules as a frame in a manual show (0 entries: nothing, so the background color shows; 1: static; 2+: cycles in order with the usual transitions and timing). It is covered by frames where they overlap, gets no captions, and is not staggered. Its assets are fit to the wall quad with cover fit (pan and zoom flags apply). Switching show type doesn't restart it. In a randomized show the wallpaper doesn't exclude its asset from the frames' shuffle.
+
+**Wall-only assets** (`wallOnly: true` in a pool, the "Wall only" checkbox in the Assets section): the wall may use any asset, but frames never show these. They are left out of the randomized shuffle (and so out of the asset count that picks static vs cycling), frame playlist pickers don't offer them, and a frame playlist entry that points at one is kept but skipped and flagged "wall only" (if the pool lists the same file again without the mark, that copy is used). Changing the mark applies like any live asset edit.
+
 The rest of this section describes the randomized show.
 
-**Pool.** The pool is the concatenation of all assets from all manifests, minus assets that failed to load.
+**Playable assets.** The concatenation of all assets from all asset pools, minus assets that failed to load. (Not to be confused with an asset pool, which is one file.)
 
-**Mode is determined by pool size vs. frame count:**
-- **Pool < frames.** Static mode. Assign assets to frames in list order and wrap around. Example: assets A, B with three frames gives A, B, A.
-- **Pool = frames.** Static mode. Asset *i* goes to frame *i*.
-- **Pool > frames.** Cycling mode.
+**Mode is determined by playable asset count vs. frame count:**
+- **Assets < frames.** Static mode. Assign assets to frames in list order and wrap around. Example: assets A, B with three frames gives A, B, A.
+- **Assets = frames.** Static mode. Asset *i* goes to frame *i*.
+- **Assets > frames.** Cycling mode.
 
 **Static mode:**
 - No cycling and no in/out transitions.
@@ -325,10 +346,10 @@ The rest of this section describes the randomized show.
 - When choosing the next asset for a frame, exclude assets currently displayed or being loaded by any frame. The exclusion compares asset entries, not file paths.
 - When the bag empties, reshuffle. Ensure the first draw of the new bag differs from the last draw of the previous bag.
 
-**Recompute** mode and assignments when frames are added or removed, or when manifests change.
+**Recompute** mode and assignments when frames are added or removed, or when asset pools change.
 
 Selection logic gets Vitest coverage:
-- no simultaneous duplicates when pool > frames
+- no simultaneous duplicates when assets > frames
 - no back-to-back repeat across a reshuffle
 - correct static assignments
 
@@ -350,12 +371,14 @@ Selection logic gets Vitest coverage:
 - Pause, unload and dispose after the out-transition.
 
 **Transitions:**
-- **Out:** dissolve to black over `transitionOutDuration`.
-- **In:** dissolve from black over `transitionInDuration` using a noise mask: a procedural noise threshold in the fragment shader, not a texture.
+- **Out:** fade to black over `transitionOutDuration`.
+- **In:** over `transitionInDuration`, in the style set by `animation.transitionInStyle`:
+  - `"noise"` (Noise Dissolve, the default): a noise mask, a procedural noise threshold in the fragment shader, not a texture. `dissolveSoftness` and `dissolveNoiseScale` shape it.
+  - `"fade"` (Simple Fade): the whole frame fades up from black. The noise settings are ignored.
+  - An unknown value falls back to `"noise"` with a warning. More styles may be added later.
 - Avoid a direct crossfade between artworks.
-- **Effect trigger:** the start of each in-transition triggers both ambient effect layers for that frame (section 5.6).
 
-**Fit.** All content uses **cover** fit to the frame (frame aspect = `physicalAspect`), applied as a UV transform, then masked by `inset`.
+**Fit.** All content uses **cover** fit to the frame (frame aspect = `physicalAspect`), applied as a UV transform.
 
 **Motion and hold duration** are measured from the end of the in-transition. Rules are evaluated in this order:
 
@@ -415,50 +438,18 @@ Selection logic gets Vitest coverage:
 
 **Color:** `captions.color`, default warm off-white `#F0EBE3`. No drop shadows; a projector cannot render them.
 
-### 5.6 Ambient effects framework
+### 5.6 Side panel
 
-The effect content is TBD. Build the framework and one placeholder effect to validate it.
-
-**Layers.** Two layers, **back** (behind frames) and **front** (above captions), both drawn in wall space across the entire projected area.
-
-**Interface:**
-  ```ts
-  interface EffectContext {
-    group: THREE.Group;          // attached to the layer's wall-space scene
-    wallSize: { w: number; h: number };
-    params: Record<string, unknown>;
-  }
-  interface EffectTrigger {
-    frameId: string;
-    frameOutlineWall: [Vec2, Vec2, Vec2, Vec2]; // frame corners in wall-local coords
-    transitionInDuration: number;
-  }
-  interface AmbientEffect {
-    init(ctx: EffectContext): void;
-    trigger(t: EffectTrigger): void;   // called at start of each in-transition
-    update(dt: number, time: number): void;
-    dispose(): void;
-  }
-  interface EffectDefinition {
-    type: string;
-    params: ParamSpec[];  // { key, label, kind: 'number'|'color'|'boolean'|'enum', min?, max?, step?, options?, default }
-    create(): AmbientEffect;
-  }
-  ```
-- Effects are content agnostic. They receive frame geometry, never the artwork.
-- `ParamSpec` drives automatic generation of panel controls in the Animation section. Enum params render as dropdowns.
-- An effect registry maps a `type` string to an `EffectDefinition`. `config.effects.back` and `config.effects.front` select the type and store its params.
-- **Placeholder effect:** a soft light sweep that travels outward from the triggering frame's outline on the back layer, plus a brief glint along the frame edges on the front layer. Visual quality is not critical. It exists to prove triggering, both layers, wall-space alignment and the param UI.
-- **Known limit:** frame faces sit a few cm in front of the wall. Wall-space effects drawn over a frame may misregister slightly from the frame content. This is accepted.
-
-### 5.7 Side panel
+**Confirmations** are inline, never native dialogs. They appear right below the control that asked: under a pool's header for its × and Save Asset Pool (opening the pool if collapsed), and below Save All Assets for that button. Others (Load Show, Save Show) use a bar at the top of the panel.
 
 **Toggling and placement:**
 - `X` toggles the panel.
-- A switch at the top moves it between the left and right edges, stored in `config.ui.panelSide`.
+- Space pauses and resumes the show, the same as the **Pause Show** button at the top of the panel. It takes priority over a focused panel button or checkbox.
+- A "Panel Alignment: L R" switch on its own line under the title moves it between the left and right edges, stored in `config.ui.panelSide`.
+- The panel's inner edge (facing the stage) drags to resize it: default 27rem, minimum 90% of that, maximum 60% of the screen width; double-click restores the default. The width is in rem so it keeps its proportions at FHD and 4K. It is runtime only (resets on reload). Section headers wrap their buttons onto a second line and truncate long names with "…" when the panel is narrow.
 - When open, the panel overlays the canvas and does not resize it.
 
-**Hotkeys** (`X`, `D`, arrows, Tab, Esc, undo/redo) are ignored while focus is in a text, number or color input.
+**Hotkeys** (`X`, `D`, Space, arrows, Tab, Esc, undo/redo) are ignored while focus is in a text, number or color input.
 
 **Cursor:** hidden over the canvas when the panel is closed.
 
@@ -469,35 +460,37 @@ The effect content is TBD. Build the framework and one placeholder effect to val
 
 **Sections**, each with a header and collapsible:
 
-1. **App controls:** close button, left/right switch, unsaved-change indicators.
+1. **App controls:** "Art Projection Mapper" title, unsaved-change indicators and close button; below them the left/right switch.
 2. **Config:** Load (open project folder), Save. Shows the current folder name. Show type switch (Randomized / Manual).
 3. **Mapping:**
    - Global: background color, debug stroke width, point radius, crosshair size.
-   - Wall quad (collapsible): 4 control points with X/Y inputs, debug color, test pattern toggle.
+   - Wall quad (collapsible): debug color (checkbox-style swatch) and test pattern toggle at the top, then 4 control points with X/Y inputs, the convexity warning, and the "Wallpaper playlist" (section 5.3), shown in both show types.
    - Each frame (collapsible, titled "Frame N"):
      - ↑ ↓ (reorder) and Remove buttons right-aligned in its header
+     - debug color picker (a checkbox-sized swatch left of its label, lined up with the checkboxes below)
+     - test pattern toggle
+     - "Additive blend" checkbox (`blend`), with hover help on faking transparency and layering
      - 4 control points with X/Y inputs
-     - debug color picker
+     - "↻ Rotate 90° clockwise" button (section 5.2)
      - physical aspect (number input)
      - caption X offset and caption Y offset (slider and number)
-     - "Additive blend" checkbox (`blend`)
-     - per-edge inset (4 sliders)
-     - test pattern toggle
      - convexity warning when applicable
-     - playlist (manual show only; hidden when randomized): one row per entry with thumbnail, title, and ↑ ↓ × buttons; the entry on screen is highlighted; missing or failed entries are flagged. "+ Add asset" opens a thumbnail picker of every loaded asset, grouped by manifest; clicking one appends it.
+     - playlist (manual show only; hidden when randomized): one row per entry with thumbnail, title, and ↑ ↓ × buttons; the entry on screen is highlighted; missing or failed entries are flagged. "+ Add asset" opens a thumbnail picker of every loaded asset, grouped by asset pool; clicking one appends it.
+     - in the playlist picker, an "Import new files…" tile (file picker) and, with several pools, an "Into asset pool" chooser. Files dropped on the playlist do the same. Imported files are added to that pool (section 5.1) and appended to this playlist. A short note ("Added 2 to this playlist.") confirms it and fades out after 4 seconds. The Assets section's own messages do the same when they are informational ("Added 1 file to assets.json…", "Saved…"); warnings and errors stay until the next message.
    - "Add new frame" button.
 4. **Assets:**
-   - Save button (overwrites modified manifests).
-   - Nested list grouped by manifest file.
-   - Each asset is collapsible, with a small preview thumbnail (or video poster) and editable fields:
+   - "Save All Assets" button, shown only with two or more pools.
+   - Nested list grouped by asset pool file. Each pool's header has a count, modified/error badges, a "Save Asset Pool" button and a red × (hidden for the last pool). Its body ends with "+ Add files…" (multi-select file picker), and the whole pool accepts files dropped from the OS (highlighted while dragging).
+   - Each asset is collapsible, with a small preview thumbnail (or video poster), a "new" badge while its file is staged, a × remove button whose hover note says the file stays on disk (and names any frames whose playlists use it), and editable fields:
      - text inputs for `title`, `artist`, `year`, `filepath`
-     - checkboxes for `zoom`, `pan`
-   - Edits apply live to the pool. Load errors are flagged per asset.
+     - checkboxes for `zoom`, `pan`, "Wall only" (`wallOnly`)
+   - A name field and "+ Add asset pool" button at the bottom.
+   - Edits apply live to what plays. Load errors are flagged per asset.
 5. **Animation:**
-   - cycle duration, transition in and out durations, frame stagger
-   - zoom start, pan speed, pan aspect threshold, max hold duration
-   - caption sizes, spacing defaults, color, fade duration, rise distance, line-two delay
-   - per-layer effect type dropdown and auto-generated effect params
+   - first, "Transition-In Style": a Style dropdown (Simple Fade, Noise Dissolve); "Dissolve softness" and "Noise Scale" show only for Noise Dissolve
+   - cycle duration, transition in and out durations, transition delay, frame stagger, max hold
+   - zoom start, pan speed, pan aspect threshold
+   - caption sizes, color, fade duration, rise distance, line-two delay
    - Sliders paired with number inputs for precision.
 
 ---
@@ -529,25 +522,23 @@ Complete each milestone before starting the next. Claude Code cannot see the pro
   - The panel is readable at FHD and 4K.
 
 **M3: Assets and cycling**
-- Manifest loading (multiple), media loading via file handles, image downscaling, video textures.
+- Asset pool loading (multiple), media loading via file handles, image downscaling, video textures.
 - Selection logic with tests.
 - Static and cycling modes, stagger, preloading, dissolve transitions.
-- Motion rules in 5.4 (video, pan, zoom, static), cover fit, insets.
+- Motion rules in 5.4 (video, pan, zoom, static), cover fit.
 - Asset panel with live editing and its own Save.
 - Acceptance:
   - No visible hitch at transitions.
   - Selection tests pass.
-  - Manifest edits round-trip to disk.
+  - Asset pool edits round-trip to disk.
 
 **M4: Captions**
 - Wall-space captions per 5.5: rotation, per-frame spacing, wrapping, sizing, animation, fonts.
 - Acceptance: captions are crisp, follow the frame's bottom edge angle, and track mapping changes live.
 
-**M5: Effects framework**
-- Two layers, the interface in 5.6, registry, auto-generated param UI, placeholder effect.
-- Acceptance: effects trigger on each in-transition, render on the correct layers, and stay aligned to frame outlines.
+The ambient effects milestone was dropped: the app focuses on mapping and showing the user's content.
 
-**M6: Polish**
+**M5: Polish**
 - Any performance work needed to hit the target in 3.4.
 - README covering setup, launching Chrome full screen, recommended codecs and the project folder layout.
 
@@ -570,14 +561,13 @@ Copy this section into `CLAUDE.md`.
   src/
     main.ts
     state/      store.ts, schema.ts, defaults.ts, migrate.ts
-    io/         projectFolder.ts, configIO.ts, manifestIO.ts, handleStore.ts
+    io/         projectFolder.ts, configIO.ts, poolIO.ts, handleStore.ts
     math/       homography.ts, homography.test.ts, geometry.ts
     render/     renderer.ts, quadCamera.ts, frameRenderer.ts, wallRenderer.ts,
                 testPattern.ts, transitionMaterial.ts, debugOverlay.ts
-    content/    assetPool.ts, shuffleBag.ts, shuffleBag.test.ts, scheduler.ts,
+    content/    selection.ts, shuffleBag.ts, shuffleBag.test.ts, scheduler.ts,
                 mediaLoader.ts, motion.ts
     captions/   captionLayout.ts, captionRenderer.ts
-    effects/    types.ts, registry.ts, placeholder.ts
     ui/         panel.ts, hotkeys.ts, sections/*.ts, panel.css
   ```
 
@@ -588,8 +578,8 @@ Copy this section into `CLAUDE.md`.
 These were not explicitly specified and were decided during brief writing:
 
 1. An image with `pan = true` whose aspect does not exceed the threshold falls back to zoom if `zoom = true`, otherwise static.
-2. In static mode (pool ≤ frames, or a manual playlist with one playable entry), images use static cover with no zoom or pan, videos loop, and captions appear without animation.
+2. In static mode (playable assets ≤ frames, or a manual playlist with one playable entry), images use static cover with no zoom or pan, videos loop, and captions appear without animation.
 3. `maxHoldDuration` applies only to panning images, not to video.
 4. The cursor stays hidden whenever the panel is closed but cursor shows when debug visuals are shown with `D`. Pressing `D` to hide debug visuals also hides cursor. 
 5. Test pattern toggles are runtime only and not saved to config.
-6. The default transition style is a noise-mask dissolve through black.
+6. The default transition-in style is a noise-mask dissolve from black (`transitionInStyle: "noise"`); Simple Fade is the alternative.

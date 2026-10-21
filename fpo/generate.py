@@ -6,7 +6,7 @@ Generate FPO (for placement only) QA project folders for Art Projector.
 Writes three self-contained project folders next to this script:
     fpo/show/        cycling mode: every motion rule, caption variant, format and error case
     fpo/static/      static mode: 3 frames, 2 assets (A, B, A)
-    fpo/tight-pool/  cycling with pool = frames + 1
+    fpo/tight-pool/  cycling with assets = frames + 1
 
 Requires Pillow (with AVIF support) and ffmpeg on PATH. Re-running overwrites the folders.
 """
@@ -173,7 +173,7 @@ def make_video(path: Path, w: int, h: int, seconds: float, ident: str, hue: floa
 # ---------------------------------------------------------------- project files
 
 
-def frame(fid: str, cx: float, color: str, inset: float = 0.0) -> dict:
+def frame(fid: str, cx: float, color: str) -> dict:
     hh = 0.25  # half of 50% canvas height
     hw = hh * FRAME_ASPECT / CANVAS_ASPECT
     return {
@@ -182,14 +182,13 @@ def frame(fid: str, cx: float, color: str, inset: float = 0.0) -> dict:
         "physicalAspect": FRAME_ASPECT,
         "debugColor": color,
         "captionSpacing": 0.05,
-        "inset": {"top": inset, "right": inset, "bottom": inset, "left": inset},
     }
 
 
-def config(manifests: list[str], frames: list[dict]) -> dict:
+def config(pools: list[str], frames: list[dict]) -> dict:
     return {
-        "schemaVersion": 1,
-        "assetManifests": manifests,
+        "schemaVersion": 2,
+        "assetPools": pools,
         "ui": {"panelSide": "left"},
         "global": {"backgroundColor": "#000000", "debug": {"strokeWidth": 2, "pointRadius": 14, "crosshairSize": 22}},
         "wallQuad": {"corners": [[0, 0], [1, 0], [1, 1], [0, 1]], "debugColor": "#0A84FF"},
@@ -227,7 +226,7 @@ def build_show() -> None:
     img_dir = out / "media" / "images"
     vid_dir = out / "media" / "videos"
 
-    # (id, file, aspect, long side, hue, expectation lines, manifest entry text fields + flags, save kwargs)
+    # (id, file, aspect, long side, hue, expectation lines, asset pool entry text fields + flags, save kwargs)
     images = [
         ("A01", "a01-portrait-static.jpg", FRAME_ASPECT, 2000, 0.00, ["STATIC · no zoom, no pan", "fills frame exactly"],
          {"title": "Lorem Ipsum Dolor", "artist": "Sit Amet Consectetur", "year": "1889"}),
@@ -300,7 +299,7 @@ def build_show() -> None:
                         "filepath": f"../media/images/{name}",
                         **{k: v for k, v in fields.items() if k in ("zoom", "pan")}})
 
-    # Duplicate entry of A01 in the same manifest: may appear in two frames at once.
+    # Duplicate entry of A01 in the same asset pool: may appear in two frames at once.
     entries.append({"title": "Lorem Ipsum Dolor (duplicate entry)", "artist": "Sit Amet Consectetur", "year": "1889",
                     "filepath": "../media/images/a01-portrait-static.jpg"})
     # Numeric year in JSON: accepted and shown as text.
@@ -337,19 +336,19 @@ def build_show() -> None:
                          **{k: v for k, v in fields.items() if k in ("zoom", "pan")}})
     write_json(out / "pools" / "videos.json", {"schemaVersion": 1, "assets": ventries})
 
-    # ---- manifest in a subfolder with media next to it (paths relative to the manifest)
+    # ---- asset pool in a subfolder with media next to it (paths relative to the pool file)
     local_art = out / "pools" / "local" / "art"
     for ident, name, hue, fields in [
         ("L01", "Cripta nº1 – lorem ipsum.jpg", 0.60, {"title": "Locus Proximus", "artist": "Via Relativa", "year": "1955"}),
         ("L02", "sub dir/l02-nested.webp", 0.65, {"title": "Profundus", "zoom": True}),
     ]:
         w, h = size_for(FRAME_ASPECT, 1600)
-        save_image(placeholder(w, h, ident, hue, ["manifest: pools/local/local.json", f"file: art/{name}",
+        save_image(placeholder(w, h, ident, hue, ["pool: pools/local/local.json", f"file: art/{name}",
                                                   "spaces / unicode / subfolder"]), local_art / name, quality=88)
     write_json(out / "pools" / "local" / "local.json", {"schemaVersion": 1, "assets": [
         {"title": "Locus Proximus", "artist": "Via Relativa", "year": "1955", "filepath": "art/Cripta nº1 – lorem ipsum.jpg"},
         {"title": "Profundus", "filepath": "art/sub dir/l02-nested.webp", "zoom": True},
-        # Same file as A02, listed from another manifest (deep ../ path).
+        # Same file as A02, listed from another asset pool (deep ../ path).
         {"title": "Adipiscing Elit Sed (from local.json)", "filepath": "../../media/images/a02-portrait-zoom.png", "zoom": True},
     ]})
 
@@ -362,7 +361,7 @@ def build_show() -> None:
     placeholder(400, 600, "P02", 0.0, ["GIF is not supported"]).save(pdir / "p02-unsupported.gif")
     (pdir / "README").write_text("Not media. Used as a no-extension filepath.\n", encoding="utf-8")
     w, h = size_for(FRAME_ASPECT, 1600)
-    save_image(placeholder(w, h, "P10", 0.12, ["VALID file", "manifest had bad field types", "(warnings, still plays)"]),
+    save_image(placeholder(w, h, "P10", 0.12, ["VALID file", "pool had bad field types", "(warnings, still plays)"]),
                pdir / "p10-valid-bad-types.jpg", quality=88)
     save_image(placeholder(w, h, "P11", 0.22, ["VALID file", "unknown fields must survive Save"]),
                pdir / "p11-valid-extra-fields.jpg", quality=88)
@@ -387,7 +386,7 @@ def build_show() -> None:
         ],
     })
 
-    # ---- broken manifests (each shows an error; the app continues)
+    # ---- broken asset pools (each shows an error; the app continues)
     (out / "pools" / "broken-syntax.json").write_text('{ "schemaVersion": 1, "assets": [ { "filepath": "x.jpg", } ', encoding="utf-8")
     write_json(out / "pools" / "wrong-shape.json", {"schemaVersion": 1, "items": []})
     write_json(out / "pools" / "future-version.json", {"schemaVersion": 99, "assets": []})

@@ -17,14 +17,13 @@ Project spec: see `ProjectBrief.md`. Work milestone by milestone (brief §6) and
   src/
     main.ts
     state/      store.ts, schema.ts, defaults.ts, migrate.ts
-    io/         projectFolder.ts, configIO.ts, manifestIO.ts, handleStore.ts
+    io/         projectFolder.ts, configIO.ts, poolIO.ts, handleStore.ts
     math/       homography.ts, homography.test.ts, geometry.ts
     render/     renderer.ts, quadCamera.ts, frameRenderer.ts, wallRenderer.ts,
                 testPattern.ts, transitionMaterial.ts, debugOverlay.ts
-    content/    assetPool.ts, shuffleBag.ts, shuffleBag.test.ts, scheduler.ts,
+    content/    selection.ts, shuffleBag.ts, shuffleBag.test.ts, scheduler.ts,
                 mediaLoader.ts, motion.ts
     captions/   captionLayout.ts, captionRenderer.ts
-    effects/    types.ts, registry.ts, placeholder.ts
     ui/         panel.ts, hotkeys.ts, sections/*.ts, panel.css
   ```
 

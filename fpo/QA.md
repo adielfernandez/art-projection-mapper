@@ -21,7 +21,7 @@ Regenerate everything with `python fpo/generate.py`. This needs Pillow and ffmpe
 |---|---|
 | `fpo/show/` | Cycling mode: every motion rule, every format, the caption-text variants, and all the error cases. 3 frames. |
 | `fpo/static/` | Static mode: 3 frames and 2 assets, so the frames show A, B, A. |
-| `fpo/tight-pool/` | Cycling with pool = frames + 1: 2 frames and 3 assets. |
+| `fpo/tight-pool/` | Cycling with assets = frames + 1: 2 frames and 3 assets. |
 
 Open a folder with **Load…** in the Config section. Each folder has its own `config.json` with default timing: cycle 12 s, panSpeed 0.03, maxHold 30 s and threshold 1.15. The frames are a generic layout, so remap them to the physical frames (or copy your mapped `frames` block in).
 
@@ -29,13 +29,13 @@ Open a folder with **Load…** in the Config section. Each folder has its own `c
 
 ## 1. `fpo/show/`: loading and errors
 
-When it opens, the **Assets** section should list 8 manifests:
+When it opens, the **Assets** section should list 8 asset pools:
 
-| Manifest | Expected |
+| Asset pool | Expected |
 |---|---|
 | `pools/paintings.json` | 17 assets, no errors |
 | `pools/videos.json` | 6 assets, no errors |
-| `pools/local/local.json` | 3 assets, no errors. Paths are relative to the manifest. Includes a filename with a space, `º` and `–`, plus a `sub dir/` |
+| `pools/local/local.json` | 3 assets, no errors. Paths are relative to the pool file. Includes a filename with a space, `º` and `–`, plus a `sub dir/` |
 | `pools/problems.json` | 9 assets with a **"Some entries had problems"** box listing 6 warnings. 5 assets are flagged **failed** at open (P01, P02, P05, P06, P07) |
 | `pools/broken-syntax.json` | Error: not valid JSON |
 | `pools/wrong-shape.json` | Error: missing an "assets" array |
@@ -106,17 +106,16 @@ Also watch for:
 - [ ] The same asset never appears twice in a row in one frame.
 - [ ] **Add frame** (to 4) and **remove frame**: cycling continues, and the new frame starts after its stagger delay.
 - [ ] Set **cycleDuration** to 5 and **transitionIn** to 3. The change applies from each frame's next cycle and does not jump.
-- [ ] Insets (per frame, in Mapping): the black band hides the edges, and the artwork stays cover-fit inside it.
 
 ## 4. Assets panel editing and Save round-trip
 
-- [ ] Each manifest group shows a count, plus a **failed** or **error** badge where it applies.
+- [ ] Each asset pool group shows a count, plus a **failed** or **error** badge where it applies.
 - [ ] Thumbnails load lazily when a group is opened. Video thumbnails show a poster frame, not black. A12's thumbnail is upright.
 - [ ] Asset names fall back to the filename when the title is missing or blank. A13's title is three spaces, so its name should be `a13-uppercase-ext.JPEG`.
-- [ ] Edit a title. The **Assets** dirty badge appears and the manifest shows **modified**.
+- [ ] Edit a title. The **Assets** dirty badge appears and the asset pool shows **modified**.
 - [ ] Change a file path to a missing file. It is flagged failed. Change it back, and the error clears and the thumbnail reloads.
 - [ ] Toggle zoom on A01. It takes effect the **next** time A01 appears.
-- [ ] Press **Save** (Assets). Only modified manifests are rewritten. Open the file and check:
+- [ ] Press **Save** (Assets). Only modified asset pools are rewritten. Open the file and check:
   - In `problems.json`, the top-level `"curator"` field and P11's `"notes"` and `"custom"` fields are still there.
   - In `paintings.json`, the field order is kept, and keys that were never present were not added.
 - [ ] **Load** with unsaved asset edits asks for confirmation first.
@@ -133,10 +132,10 @@ Also watch for:
 - [ ] Mode is static and the frames show **S-A, S-B, S-A**: a landscape image, then a looping video, then the image again.
 - [ ] No transitions. S-A **does not move** even though its zoom and pan flags are set; it is a static landscape cover crop.
 - [ ] The video (S-B) loops forever (START flashes every 5 s).
-- [ ] Remove one frame (pool = frames): **S-A, S-B**, still static. Add two frames: the order wraps.
-- [ ] Add frames until pool < frames, then remove them back below the pool size: mode recomputes each time.
+- [ ] Remove one frame (assets = frames): **S-A, S-B**, still static. Add two frames: the order wraps.
+- [ ] Add frames until assets < frames, then remove them back below the asset count: mode recomputes each time.
 
-## 6. Tight pool (`fpo/tight-pool/`)
+## 6. Tight asset count (`fpo/tight-pool/`)
 
 - [ ] 2 frames and 3 assets: the frames never show the same T## at the same time.
 - [ ] T02 zooms; T01 and T03 are static.
