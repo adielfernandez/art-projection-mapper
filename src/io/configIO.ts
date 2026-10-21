@@ -11,6 +11,8 @@ import {
   type NormPoint,
   type PlaylistItem,
   SHOW_TYPES,
+  BLEND_MODES,
+  type BlendMode,
   type ShowType,
 } from '../state/schema';
 import { readJsonIfExists, writeText } from './projectFolder';
@@ -162,6 +164,11 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
             });
           }
         }
+        let blend: BlendMode = fallback.blend;
+        if (rawFrame.blend !== undefined) {
+          if (BLEND_MODES.includes(rawFrame.blend as BlendMode)) blend = rawFrame.blend as BlendMode;
+          else warnings.push(`${path}.blend must be ${BLEND_MODES.map((t) => `"${t}"`).join(' or ')}; using "${fallback.blend}".`);
+        }
         frames.push({
           id: id as string,
           corners: corners(rawFrame.corners, fallback.corners, `${path}.corners`),
@@ -171,6 +178,7 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           captionOffsetX: num(rawFrame, 'captionOffsetX', fallback.captionOffsetX, path),
           inset,
           playlist,
+          blend,
         });
       });
     }

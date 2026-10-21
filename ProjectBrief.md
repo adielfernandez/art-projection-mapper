@@ -86,7 +86,7 @@ Each quad (every frame plus the wall quad) maps its local rectangle to its four 
 
 1. Clear to the configured background color (default black).
 2. **Back effect layer**, drawn in wall space.
-3. **Frames**, each drawn in frame space with its own homography camera: artwork, transition mask, per-edge inset masking, and the test pattern when enabled.
+3. **Frames**, each drawn in frame space with its own homography camera: artwork, transition mask, per-edge inset masking, and the test pattern when enabled. Frames draw in `frames` list order, so later frames are on top where they overlap. A frame with `blend: "add"` adds its light to what's behind it instead of covering it, so its black areas are transparent.
 4. **Captions**, drawn in wall space.
 5. **Front effect layer**, drawn in wall space.
 6. **Debug overlay**, drawn in screen space on a separate 2D canvas layered above the WebGL canvas, sized to device pixels.
@@ -150,7 +150,8 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
       "inset": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
       "playlist": [
         { "manifest": "pools/paintings.json", "filepath": "media/nightmare.jpg" }
-      ]
+      ],
+      "blend": "normal"
     }
   ],
   "animation": {
@@ -186,6 +187,7 @@ Field notes:
 - **`inset`** values are in frame-local units. They shrink the visible artwork area inward from each edge to hide light spill onto the frame molding. The inset band renders black.
 - **`showType`** is `"randomized"` (default) or `"manual"`. See 5.3.
 - **`playlist`** (per frame, default `[]`) lists the assets the frame plays in a manual show, in order. Each entry names an asset by its manifest path (as listed in `assetManifests`) and its `filepath` in that manifest; if several assets share a filepath, the first is used. Duplicates are allowed, within one playlist and across frames. Entries whose asset can't be found are kept and skipped. Playlists are kept, but ignored, in a randomized show.
+- **`blend`** (per frame, `"normal"` or `"add"`, default `"normal"`). `"normal"` covers whatever is behind the frame. `"add"` adds the frame's light to it, so black (including black gaps, insets and an empty frame) is transparent and frames drawn earlier show through. Meant for bright content on black (fire, glows). Additive content only adds light, so it cannot hide what's behind it, and overlapping bright areas can clip to white.
 - **`panSpeed`** is in frame widths per second.
 - **Durations** are in seconds.
 - **`id`** is generated once and never reused. Displayed frame numbers are list positions and may renumber after a removal; ids and settings never shift.
@@ -291,6 +293,7 @@ Field notes:
 **Adding and removing frames:**
 - "Add new frame" creates a frame centered on the canvas at the default size, with the next number and a new color.
 - "Remove" in a frame's section header deletes it immediately. It is undoable via the config dirty flag only; no confirmation dialog.
+- ↑ ↓ in a frame's section header move it in the frame list, which is also the draw order (later frames draw on top). Frames are renumbered to match. Not undoable.
 
 ### 5.3 Content selection
 
@@ -472,11 +475,12 @@ The effect content is TBD. Build the framework and one placeholder effect to val
    - Global: background color, debug stroke width, point radius, crosshair size.
    - Wall quad (collapsible): 4 control points with X/Y inputs, debug color, test pattern toggle.
    - Each frame (collapsible, titled "Frame N"):
-     - a Remove button right-aligned in its header
+     - ↑ ↓ (reorder) and Remove buttons right-aligned in its header
      - 4 control points with X/Y inputs
      - debug color picker
      - physical aspect (number input)
      - caption X offset and caption Y offset (slider and number)
+     - "Additive blend" checkbox (`blend`)
      - per-edge inset (4 sliders)
      - test pattern toggle
      - convexity warning when applicable

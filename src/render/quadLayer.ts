@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { FrameVisual } from '../content/scheduler';
 import type { Quad } from '../math/homography';
-import type { Inset } from '../state/schema';
+import type { BlendMode, Inset } from '../state/schema';
 import { QuadCamera } from './quadCamera';
 import { createTestPatternMaterial } from './testPattern';
 import { createFrameMaterial } from './transitionMaterial';
@@ -56,6 +56,11 @@ export class QuadLayer {
 
   setInset(inset: Readonly<Inset>): void {
     this.content?.material.uniforms.uInset!.value.set(inset.top, inset.right, inset.bottom, inset.left);
+  }
+
+  /** Additive: black adds no light, so frames drawn earlier show through it. */
+  setBlend(mode: BlendMode): void {
+    if (this.content) this.content.material.blending = mode === 'add' ? THREE.AdditiveBlending : THREE.NormalBlending;
   }
 
   setVisual(v: FrameVisual): void {

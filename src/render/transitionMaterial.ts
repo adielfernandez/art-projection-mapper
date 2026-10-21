@@ -4,6 +4,8 @@ import * as THREE from 'three';
  * Frame content shader, in frame-local space (width 1, height 1/physicalAspect):
  * cover-fit/zoom/pan via a UV view rect, a noise-mask dissolve in from black,
  * a fade out to black, and per-edge inset masking (the inset band is black).
+ * Output alpha is always 1: normal blending covers what's behind, additive blending
+ * (set per frame by the quad layer) adds to it, so black there is transparent.
  */
 const vertex = /* glsl */ `
   uniform vec2 uSize;

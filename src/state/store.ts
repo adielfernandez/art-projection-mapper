@@ -79,7 +79,7 @@ export type Listener = (e: StoreEvent) => void;
 /** Homomorphic, so tuples (e.g. corner points) stay tuples. */
 export type DeepReadonly<T> = T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T;
 
-export type FrameSettings = Partial<Pick<FrameConfig, 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'captionOffsetX' | 'inset'>>;
+export type FrameSettings = Partial<Pick<FrameConfig, 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'captionOffsetX' | 'inset' | 'blend'>>;
 
 interface PointChange {
   index: CornerIndex;
@@ -462,6 +462,16 @@ export class Store {
     this.emit((e) => (e.frames = e.runtime = true));
   }
 
+  /** Move a frame to another position in the list. Later frames draw on top. Not undoable. */
+  moveFrame(id: QuadId, to: number): void {
+    const from = this.frameIndex(id);
+    const n = this._config.frames.length;
+    if (from < 0 || from === to || to < 0 || to >= n) return;
+    this._config.frames.splice(to, 0, ...this._config.frames.splice(from, 1));
+    this.markConfigDirty();
+    this.emit((e) => (e.frames = true));
+  }
+
   updateFrame(id: QuadId, patch: FrameSettings): void {
     const f = this._config.frames.find((fr) => fr.id === id);
     if (!f) return;
@@ -470,6 +480,7 @@ export class Store {
     if (patch.captionSpacing !== undefined) f.captionSpacing = patch.captionSpacing;
     if (patch.captionOffsetX !== undefined) f.captionOffsetX = patch.captionOffsetX;
     if (patch.inset !== undefined) f.inset = { ...patch.inset };
+    if (patch.blend !== undefined) f.blend = patch.blend;
     this.markConfigDirty();
     this.emit((e) => (e.frames = true));
   }

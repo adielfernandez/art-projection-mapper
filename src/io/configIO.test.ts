@@ -85,9 +85,10 @@ describe('parseConfig', () => {
     expect(parsed.warnings).toHaveLength(2);
   });
 
-  it('parses showType and frame playlists, defaulting both when missing', () => {
+  it('parses showType, frame playlists and blend, defaulting them when missing', () => {
     const cfg = defaultConfig(ASPECT);
     cfg.showType = 'manual';
+    cfg.frames[1]!.blend = 'add';
     cfg.frames[0]!.playlist = [
       { manifest: 'assets.json', filepath: 'media/a.jpg' },
       { manifest: 'assets.json', filepath: 'media/a.jpg' }, // duplicates are allowed
@@ -100,16 +101,17 @@ describe('parseConfig', () => {
     expect(old.warnings).toEqual([]);
     expect(old.config.showType).toBe('randomized');
     expect(old.config.frames[0]!.playlist).toEqual([]);
+    expect(old.config.frames[0]!.blend).toBe('normal');
   });
 
-  it('falls back with warnings for an invalid showType and malformed playlist entries', () => {
+  it('falls back with warnings for an invalid showType, blend and malformed playlist entries', () => {
     const { config, warnings } = parseConfig(
       {
         schemaVersion: 1,
         showType: 'shuffle',
         frames: [
           { id: 'a', playlist: [{ manifest: 'm.json', filepath: 'x.jpg' }, { filepath: 'y.jpg' }, 'z.jpg'] },
-          { id: 'b', playlist: 'nope' },
+          { id: 'b', playlist: 'nope', blend: 'screen' },
         ],
       },
       ASPECT,
@@ -117,7 +119,8 @@ describe('parseConfig', () => {
     expect(config.showType).toBe('randomized');
     expect(config.frames[0]!.playlist).toEqual([{ manifest: 'm.json', filepath: 'x.jpg' }]);
     expect(config.frames[1]!.playlist).toEqual([]);
-    expect(warnings).toHaveLength(4);
+    expect(config.frames[1]!.blend).toBe('normal');
+    expect(warnings).toHaveLength(5);
   });
 
   it('accepts an empty frame list', () => {

@@ -100,6 +100,7 @@ export class Renderer {
       }
       layer.setAccent(f.debugColor);
       layer.setInset(f.inset);
+      layer.setBlend(f.blend);
     }
     this.wall.setAccent(this.store.config.wallQuad.debugColor);
   }

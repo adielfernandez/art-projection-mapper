@@ -157,6 +157,21 @@ describe('Store frame and project actions', () => {
     expect(store.runtime.configDirty).toBe(true);
   });
 
+  it('moveFrame reorders frames (later draws on top) and ignores out-of-range moves', () => {
+    const { store } = makeStore();
+    store.addFrame();
+    const [a, b, c] = store.config.frames.map((f) => f.id);
+    store.moveFrame(c!, 0);
+    expect(store.config.frames.map((f) => f.id)).toEqual([c, a, b]);
+    expect(store.runtime.configDirty).toBe(true);
+    store.moveFrame(c!, 1);
+    expect(store.config.frames.map((f) => f.id)).toEqual([a, c, b]);
+    store.moveFrame(a!, -1);
+    store.moveFrame(a!, 3);
+    store.moveFrame('nope', 0);
+    expect(store.config.frames.map((f) => f.id)).toEqual([a, c, b]);
+  });
+
   it('undo skips edits on removed frames', () => {
     const { store, ref } = makeStore();
     const other = { quadId: store.config.frames[1]!.id, index: 0 as const };

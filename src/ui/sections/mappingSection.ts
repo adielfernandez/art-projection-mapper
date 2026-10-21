@@ -74,6 +74,14 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
   const frame = () => store.config.frames.find((f) => f.id === id)!;
   const remove = button('Remove', () => store.removeFrame(id), 'danger small');
   remove.title = 'Remove this frame (no confirmation)';
+  // The panel rebuilds the frame list when the order changes, so index is current here.
+  const last = store.config.frames.length - 1;
+  const up = button('↑', () => store.moveFrame(id, index - 1), 'small');
+  up.title = 'Move up (draws under the frames below it)';
+  up.disabled = index === 0;
+  const down = button('↓', () => store.moveFrame(id, index + 1), 'small');
+  down.title = 'Move down (draws over the frames above it)';
+  down.disabled = index === last;
 
   const insetRow = (edge: 'top' | 'right' | 'bottom' | 'left', label: string) =>
     sliderRow(b, label, {
@@ -103,6 +111,10 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
       }),
       "Gap between the frame's bottom edge and the captions, in frame widths.",
     ),
+    withHelp(
+      checkboxRow(b, 'Additive blend', () => frame().blend === 'add', (v) => store.updateFrame(id, { blend: v ? 'add' : 'normal' })),
+      "Adds this frame's light to the frames drawn before it instead of covering them, so black is see-through. For bright content on black (fire, glows). Frames lower in this list draw on top.",
+    ),
     h('div', { class: 'subhead', text: 'Inset (frame widths)' }),
     insetRow('top', 'Top'),
     insetRow('right', 'Right'),
@@ -111,7 +123,7 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
     checkboxRow(b, 'Test pattern', () => store.isTestPatternOn(id), (v) => store.setTestPattern(id, v)),
     convexWarning(ctx, b, id),
     playlistBlock(ctx, b, id),
-  ], { class: 'quad', headerExtras: [remove] });
+  ], { class: 'quad', headerExtras: [up, down, remove] });
 }
 
 /** Section title: color swatch, name, and an optional read-only id in gray. */

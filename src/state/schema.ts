@@ -21,6 +21,10 @@ export interface PlaylistItem {
   filepath: string;
 }
 
+/** How a frame's content combines with what's behind it. 'add' adds light, so black is transparent. */
+export type BlendMode = 'normal' | 'add';
+export const BLEND_MODES: readonly BlendMode[] = ['normal', 'add'];
+
 export interface FrameConfig {
   id: string;
   corners: Corners;
@@ -35,6 +39,8 @@ export interface FrameConfig {
   inset: Inset;
   /** Manual show: assets this frame plays, in order. Ignored in randomized shows. */
   playlist: PlaylistItem[];
+  /** 'add': the frame adds its light to frames drawn before it, so its black is see-through. */
+  blend: BlendMode;
 }
 
 export interface WallQuadConfig {
