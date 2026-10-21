@@ -1,11 +1,11 @@
 {
-  "schemaVersion": 1,
-  "assetManifests": [
+  "schemaVersion": 2,
+  "assetPools": [
     "macabre.json"
   ],
   "showType": "randomized",
   "ui": {
-    "panelSide": "right"
+    "panelSide": "left"
   },
   "global": {
     "backgroundColor": "#000000",
@@ -61,13 +61,8 @@
       "debugColor": "#FF453A",
       "captionSpacing": 0.019,
       "captionOffsetX": 0.006,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
-      "playlist": []
+      "playlist": [],
+      "blend": "normal"
     },
     {
       "id": "f_fpo02",
@@ -93,13 +88,8 @@
       "debugColor": "#30D158",
       "captionSpacing": 0.019,
       "captionOffsetX": -0.02,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
-      "playlist": []
+      "playlist": [],
+      "blend": "normal"
     }
   ],
   "animation": {

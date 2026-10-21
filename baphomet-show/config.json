@@ -1,11 +1,11 @@
 {
-  "schemaVersion": 1,
-  "assetManifests": [
+  "schemaVersion": 2,
+  "assetPools": [
     "baphomet.json"
   ],
   "showType": "manual",
   "ui": {
-    "panelSide": "right"
+    "panelSide": "left"
   },
   "global": {
     "backgroundColor": "#000000",
@@ -61,15 +61,9 @@
       "debugColor": "#30D158",
       "captionSpacing": 0.019,
       "captionOffsetX": -0.02,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
       "playlist": [
         {
-          "manifest": "baphomet.json",
+          "pool": "baphomet.json",
           "filepath": "media/flame_black.mp4"
         }
       ],
@@ -99,15 +93,9 @@
       "debugColor": "#FFD60A",
       "captionSpacing": 0.05,
       "captionOffsetX": 0,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
       "playlist": [
         {
-          "manifest": "baphomet.json",
+          "pool": "baphomet.json",
           "filepath": "media/flame_black.mp4"
         }
       ],
@@ -137,15 +125,9 @@
       "debugColor": "#0AE2FF",
       "captionSpacing": 0.05,
       "captionOffsetX": 0,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
       "playlist": [
         {
-          "manifest": "baphomet.json",
+          "pool": "baphomet.json",
           "filepath": "media/flame_black.mp4"
         }
       ],
@@ -175,15 +157,9 @@
       "debugColor": "#FF810A",
       "captionSpacing": 0.05,
       "captionOffsetX": 0,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
       "playlist": [
         {
-          "manifest": "baphomet.json",
+          "pool": "baphomet.json",
           "filepath": "media/flame_black.mp4"
         }
       ],
@@ -213,15 +189,9 @@
       "debugColor": "#BE0AFF",
       "captionSpacing": 0.05,
       "captionOffsetX": 0,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
       "playlist": [
         {
-          "manifest": "baphomet.json",
+          "pool": "baphomet.json",
           "filepath": "media/flame_black.mp4"
         }
       ],
@@ -251,15 +221,9 @@
       "debugColor": "#FF0A99",
       "captionSpacing": 0.05,
       "captionOffsetX": 0,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
       "playlist": [
         {
-          "manifest": "baphomet.json",
+          "pool": "baphomet.json",
           "filepath": "media/flame_black.mp4"
         }
       ],
@@ -289,19 +253,13 @@
       "debugColor": "#FF453A",
       "captionSpacing": 0.019,
       "captionOffsetX": 0.006,
-      "inset": {
-        "top": 0,
-        "right": 0,
-        "bottom": 0,
-        "left": 0
-      },
       "playlist": [
         {
-          "manifest": "baphomet.json",
+          "pool": "baphomet.json",
           "filepath": "media/baphomet-sigil.mp4"
         },
         {
-          "manifest": "baphomet.json",
+          "pool": "baphomet.json",
           "filepath": "media/baphomet-sigil.mp4"
         }
       ],
