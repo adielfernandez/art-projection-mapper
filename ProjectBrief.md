@@ -144,6 +144,7 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
   "frames": [
     {
       "id": "f_8k2j1",
+      "title": "The Nightmare",
       "corners": [[0.20, 0.15], [0.38, 0.15], [0.38, 0.75], [0.20, 0.75]],
       "physicalAspect": 0.6571,
       "debugColor": "#FF453A",
@@ -180,6 +181,7 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
 
 Field notes:
 - **`corners`** are in canvas-normalized coordinates, ordered TL, TR, BR, BL relative to the physical frame.
+- **`title`** (per frame, default `"Untitled"`) is the user's name for the frame. The panel heading reads "Frame N: title" (just "Frame N" if it is blank). A missing title loads as `"Untitled"`; a non-string one falls back with a warning.
 - **`physicalAspect`** is the physical width ÷ height. The default is `0.6571` (23″ × 35″).
 - **`captionSpacing` (panel: "Caption Y offset"), `captionOffsetX` (panel: "Caption X offset"; may be negative), `titleSize`, `lineTwoSize`, `lineGap` and `riseDistance`** are in units of the frame's bottom-edge length measured in wall space (one "frame width").
 - **`inset`** (per-edge masking) was removed: corrections are made with the control points. An `inset` key in an older file is ignored and dropped on the next save.
@@ -262,6 +264,7 @@ An asset pool is a JSON file listing media. A project can have several (for exam
 **Mouse:**
 - Press near a control point (within hit radius) to select and drag it. Dragging a point moves only that point.
 - Press inside a frame (away from its points) and drag to move the whole frame; its four points keep their relative positions in screen space. Movement starts after a 4 px dead zone, so a click never moves it. The topmost frame wins where frames overlap; the wall quad is never dragged by its body. Selection is unchanged.
+- Right-click inside a frame (the topmost one where frames overlap) to rotate it 90° clockwise, the same as its Rotate button (below). The browser's context menu is suppressed while debug visuals are shown. Right-clicking outside every frame does nothing.
 - Shift while dragging scales motion to 10% for fine placement.
 - All drags are clamped to the viewport. A whole-frame drag stops flush when any corner reaches an edge, and still slides along that edge.
 - The selected point renders highlighted.
@@ -465,8 +468,10 @@ Selection logic gets Vitest coverage:
 3. **Mapping:**
    - Global: background color, debug stroke width, point radius, crosshair size.
    - Wall quad (collapsible): debug color (checkbox-style swatch) and test pattern toggle at the top, then 4 control points with X/Y inputs, the convexity warning, and the "Wallpaper playlist" (section 5.3), shown in both show types.
-   - Each frame (collapsible, titled "Frame N"):
+   - Each frame (collapsible, titled "Frame N: title"):
      - ↑ ↓ (reorder) and Remove buttons right-aligned in its header
+     - the frame id, read-only, in gray, just under the heading
+     - "Title" text box (`title`); the heading updates as you type
      - debug color picker (a checkbox-sized swatch left of its label, lined up with the checkboxes below)
      - test pattern toggle
      - "Additive blend" checkbox (`blend`), with hover help on faking transparency and layering
