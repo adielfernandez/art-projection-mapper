@@ -90,6 +90,7 @@ describe('parseConfig', () => {
     const cfg = defaultConfig(ASPECT);
     cfg.showType = 'manual';
     cfg.frames[1]!.blend = 'add';
+    cfg.frames[0]!.title = 'The Nightmare';
     cfg.frames[0]!.playlist = [
       { pool: 'assets.json', filepath: 'media/a.jpg' },
       { pool: 'assets.json', filepath: 'media/a.jpg' }, // duplicates are allowed
@@ -103,6 +104,13 @@ describe('parseConfig', () => {
     expect(old.config.showType).toBe('randomized');
     expect(old.config.frames[0]!.playlist).toEqual([]);
     expect(old.config.frames[0]!.blend).toBe('normal');
+    expect(old.config.frames[0]!.title).toBe('Untitled');
+  });
+
+  it('falls back to "Untitled" with a warning for a non-string title', () => {
+    const { config, warnings } = parseConfig({ schemaVersion: 2, frames: [{ id: 'x', title: 7 }] }, ASPECT);
+    expect(config.frames[0]!.title).toBe('Untitled');
+    expect(warnings).toEqual(['frames[0].title must be a string; using "Untitled".']);
   });
 
   it('falls back with warnings for an invalid showType, blend and malformed playlist entries', () => {

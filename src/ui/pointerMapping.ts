@@ -30,13 +30,13 @@ type Drag =
 
 /**
  * Mouse picking and dragging. Pressing near a control point drags that point; pressing
- * inside a frame drags the whole frame. Every drag is clamped to the viewport. Active only
+ * inside a frame drags the whole frame; right-clicking inside one rotates it. Every drag is clamped to the viewport. Active only
  * while debug visuals are shown, so a hidden mapping can't be bumped by accident.
  */
 export function attachPointerMapping(target: HTMLElement, canvas: HTMLCanvasElement, store: Store): void {
   let drag: Drag | null = null;
 
-  const toDevicePx = (e: PointerEvent): [number, number] => {
+  const toDevicePx = (e: MouseEvent): [number, number] => {
     const r = canvas.getBoundingClientRect();
     const { w, h } = store.runtime.viewport;
     return [((e.clientX - r.left) * w) / r.width, ((e.clientY - r.top) * h) / r.height];
@@ -135,6 +135,15 @@ export function attachPointerMapping(target: HTMLElement, canvas: HTMLCanvasElem
     if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId);
     if (started) store.endDrag();
   };
+  // Right-click inside a frame turns it 90° clockwise (same as its Rotate button).
+  target.addEventListener('contextmenu', (e) => {
+    if (!store.runtime.debugVisible || drag) return;
+    e.preventDefault();
+    const [x, y] = toDevicePx(e);
+    const quadId = frameAt(x, y);
+    if (quadId) store.rotateQuad(quadId);
+  });
+
   target.addEventListener('pointerup', end);
   target.addEventListener('pointercancel', end);
 }

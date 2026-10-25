@@ -137,7 +137,7 @@ export class DebugOverlay {
     const { w, h } = this.store.runtime.viewport;
     const fontPx = this.uiFontPx();
     const sel = this.store.runtime.selected;
-    let text = 'Click a point or Tab to select · Arrows nudge (Shift ×10, Alt ×0.1) · Shift-drag = fine · Ctrl+Z / Ctrl+Shift+Z · D hides';
+    let text = 'Click a point or Tab to select · Arrows nudge (Shift ×10, Alt ×0.1) · Shift-drag = fine · Right-click frame = rotate · Ctrl+Z / Ctrl+Shift+Z · D hides';
     if (sel) {
       const corners = this.store.getCorners(sel.quadId);
       const c = corners?.[sel.index];

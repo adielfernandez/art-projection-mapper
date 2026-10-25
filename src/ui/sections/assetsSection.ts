@@ -4,6 +4,7 @@ import { Binder, button, checkboxRow, h, section, showNote, textRow, withHelp } 
 import { dropZone } from '../dropZone';
 import type { Thumbnails } from '../thumbnails';
 import type { PanelContext } from './context';
+import { frameLabel } from './mappingSection';
 
 /**
  * Assets: asset pools (grouped), each asset editable live. Files can be added with a picker
@@ -84,8 +85,10 @@ export function assetsSection(ctx: PanelContext): HTMLElement {
 }
 
 /** "Frame 2", or "the wall" for the wallpaper playlist. */
-function quadName(id: string, frames: readonly { id: string }[]): string {
-  return id === WALL_QUAD_ID ? 'the wall' : `Frame ${frames.findIndex((f) => f.id === id) + 1}`;
+function quadName(id: string, frames: readonly { id: string; title: string }[]): string {
+  if (id === WALL_QUAD_ID) return 'the wall';
+  const i = frames.findIndex((f) => f.id === id);
+  return frameLabel(i, frames[i]?.title ?? '');
 }
 
 function poolGroup(ctx: PanelContext, b: Binder, thumbs: Thumbnails, path: string): HTMLElement {

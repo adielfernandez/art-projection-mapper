@@ -231,13 +231,22 @@
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
-.quad-id {
+.quad-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Read-only frame id, just under the frame's heading. */
+.quad-id {
+  margin-bottom: 0.3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
-  font-weight: 400;
+  font-size: 0.8rem;
+  user-select: text;
 }
 
 .subhead {

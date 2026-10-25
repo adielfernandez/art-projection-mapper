@@ -20,7 +20,7 @@ export function configSection(ctx: PanelContext): HTMLElement {
   };
   const showType = withHelp(
     row('Show type', h('div', { class: 'segmented' }, [showTypeButton('randomized', 'Randomized'), showTypeButton('manual', 'Manual')])),
-    "Randomized: all frames draw from every asset in every asset pool, shuffled. Manual: each frame plays its own playlist (in its Mapping section) in order; one asset stays up, an empty playlist stays black. Switching restarts every frame. Saved with the config.",
+    "Randomized: all frames draw from every asset pool, shuffled (except assets marked Wall only). Manual: each frame plays its own playlist (in its Mapping section) in order; one asset stays up, an empty playlist stays black. The wall's wallpaper plays its own playlist either way. Switching restarts every frame (not the wallpaper). Saved with the show.",
   );
 
   binder.add(() => {

@@ -167,8 +167,12 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           if (BLEND_MODES.includes(rawFrame.blend as BlendMode)) blend = rawFrame.blend as BlendMode;
           else warnings.push(`${path}.blend must be ${BLEND_MODES.map((t) => `"${t}"`).join(' or ')}; using "${fallback.blend}".`);
         }
+        let title = fallback.title;
+        if (typeof rawFrame.title === 'string') title = rawFrame.title;
+        else if (rawFrame.title !== undefined) warnings.push(`${path}.title must be a string; using "${fallback.title}".`);
         frames.push({
           id: id as string,
+          title,
           corners: corners(rawFrame.corners, fallback.corners, `${path}.corners`),
           physicalAspect: num(rawFrame, 'physicalAspect', fallback.physicalAspect, path, { positive: true }),
           debugColor: color(rawFrame, 'debugColor', fallback.debugColor, path),

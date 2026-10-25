@@ -1,6 +1,7 @@
 import { CONFIG_SCHEMA_VERSION, type Config, type Corners, type FrameConfig } from './schema';
 
 export const DEFAULT_PHYSICAL_ASPECT = 0.6571; // 23" × 35"
+export const DEFAULT_FRAME_TITLE = 'Untitled';
 /** Default frame height as a fraction of canvas height. */
 export const DEFAULT_FRAME_HEIGHT = 0.5;
 
@@ -48,6 +49,7 @@ export function newFrame(
 ): FrameConfig {
   return {
     id: generateFrameId(existing.map((f) => f.id)),
+    title: DEFAULT_FRAME_TITLE,
     corners: frameCorners(cx, cy, DEFAULT_PHYSICAL_ASPECT, canvasAspect),
     physicalAspect: DEFAULT_PHYSICAL_ASPECT,
     debugColor: nextFrameColor(existing.map((f) => f.debugColor)),

@@ -17,9 +17,9 @@ const ANIMATION_HELP: Record<keyof AnimationConfig, string> = {
     'How a new artwork appears. Simple Fade: the whole frame fades up from black. Noise Dissolve: the artwork appears through soft, spreading blotches.',
   cycleDuration:
     'How long each artwork holds, fully visible, between its transitions. Also the cutoff for videos shorter than this (they loop until it elapses).',
-  transitionInDuration: 'Length of the noise dissolve from black when a new artwork appears. Pan and zoom already move during it.',
+  transitionInDuration: 'How long a new artwork takes to appear (fade or dissolve, see Style above). Pan and zoom already move during it.',
   transitionOutDuration: 'Length of the fade to black before a frame changes artwork. Pan and zoom keep moving until it ends.',
-  transitionDelay: 'How long a frame stays black after one artwork fades out, before the next one dissolves in.',
+  transitionDelay: 'How long a frame stays black after one artwork fades out, before the next one appears.',
   dissolveSoftness:
     'Edge softness of the noise dissolve-in. Low = crisp, hard-edged blotches; high = wide, gradual edges that read more like a fade.',
   dissolveNoiseScale:
@@ -28,7 +28,7 @@ const ANIMATION_HELP: Record<keyof AnimationConfig, string> = {
   maxHoldDuration:
     'Longest a panning image may hold. Wide panoramas speed up to finish within it. Does not apply to video.',
   zoomStart:
-    'Starting scale for Zoom images. They move from this down to 1.0 (exact cover) from the start of the dissolve-in to the end of the fade-out. 1.15 = 15% closer.',
+    'Starting scale for Zoom images. They move from this down to 1.0 (exact cover) from the start of the transition in to the end of the fade-out. 1.15 = 15% closer.',
   panSpeed:
     'Sets how long a pan holds (travel ÷ speed), up to Max hold. The pan spans the whole visible time including both transitions, so it moves slightly slower than this.',
   panAspectThreshold:

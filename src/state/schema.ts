@@ -21,6 +21,8 @@ export const BLEND_MODES: readonly BlendMode[] = ['normal', 'add'];
 
 export interface FrameConfig {
   id: string;
+  /** User's name for the frame, shown as "Frame N: title" in the panel. */
+  title: string;
   corners: Corners;
   /** Physical width ÷ height. */
   physicalAspect: number;

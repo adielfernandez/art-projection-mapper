@@ -1,6 +1,6 @@
 import { WALL_QUAD_ID, type QuadId } from '../../state/schema';
 import { CORNER_NAMES, type CornerIndex } from '../../state/store';
-import { Binder, button, checkboxRow, colorCheckRow, colorRow, h, numberInput, numberRow, section, sliderRow, withHelp } from '../controls';
+import { Binder, button, checkboxRow, colorCheckRow, colorRow, h, numberInput, numberRow, section, sliderRow, textRow, withHelp } from '../controls';
 import type { PanelContext } from './context';
 import { playlistBlock } from './playlistBlock';
 
@@ -29,7 +29,7 @@ export function mappingSection(ctx: PanelContext): HTMLElement {
   ];
 
   // ----- Wall quad -----
-  const wall = section(ctx.openState, 'wall', quadTitle('Wall quad', () => store.config.wallQuad.debugColor, binder), [
+  const wall = section(ctx.openState, 'wall', quadTitle(() => 'Wall quad', () => store.config.wallQuad.debugColor, binder), [
     colorCheckRow(binder, 'Debug color', () => store.config.wallQuad.debugColor, (v) => store.setWallColor(v)),
     checkboxRow(binder, 'Test pattern', () => store.isTestPatternOn(WALL_QUAD_ID), (v) => store.setTestPattern(WALL_QUAD_ID, v)),
     pointRows(ctx, binder, WALL_QUAD_ID),
@@ -83,7 +83,10 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
   down.title = 'Move down (draws over the frames above it)';
   down.disabled = index === last;
 
-  return section(ctx.openState, `frame:${id}`, quadTitle(`Frame ${index + 1}`, () => frame().debugColor, b, id), [
+  const idRow = h('div', { class: 'quad-id', text: `ID: ${id}`, title: 'Frame id in config.json (not editable)' });
+  return section(ctx.openState, `frame:${id}`, quadTitle(() => frameLabel(index, frame().title), () => frame().debugColor, b), [
+    idRow,
+    textRow(b, 'Title', { get: () => frame().title, set: (v) => store.updateFrame(id, { title: v }), placeholder: 'Untitled' }),
     colorCheckRow(b, 'Debug color', () => frame().debugColor, (v) => store.updateFrame(id, { debugColor: v })),
     checkboxRow(b, 'Test pattern', () => store.isTestPatternOn(id), (v) => store.setTestPattern(id, v)),
     withHelp(
@@ -126,12 +129,21 @@ function rotateButton(ctx: PanelContext, id: QuadId): HTMLElement {
   return h('div', { class: 'rotate-row' }, [rotate]);
 }
 
-/** Section title: color swatch, name, and an optional read-only id in gray. */
-function quadTitle(text: string, color: () => string, b: Binder, id?: string): HTMLElement {
+/** "Frame 3: The Nightmare" (just "Frame 3" when the title is blank). index is 0-based. */
+export function frameLabel(index: number, title: string): string {
+  const t = title.trim();
+  return t ? `Frame ${index + 1}: ${t}` : `Frame ${index + 1}`;
+}
+
+/** Section title: color swatch and name, both kept current. */
+function quadTitle(text: () => string, color: () => string, b: Binder): HTMLElement {
   const swatch = h('span', { class: 'swatch' });
-  b.add(() => (swatch.style.background = color()));
-  const idEl = id === undefined ? null : h('span', { class: 'quad-id', text: `(${id})`, title: 'Frame id in config.json' });
-  return h('span', { class: 'title' }, [swatch, text, idEl]);
+  const name = h('span', { class: 'quad-name' });
+  b.add(() => {
+    swatch.style.background = color();
+    name.textContent = text();
+  });
+  return h('span', { class: 'title' }, [swatch, name]);
 }
 
 /** X/Y inputs in device pixels for each corner. Clicking the corner name selects that point. */
@@ -154,12 +166,17 @@ function pointRows(ctx: PanelContext, b: Binder, quadId: QuadId): HTMLElement {
       step: 0.1, decimals: 2,
     });
     const row = h('div', { class: 'point-row' }, [name, h('span', { class: 'axis', text: 'X' }), x, h('span', { class: 'axis', text: 'Y' }), y]);
+    // Rows are rebuilt when frames are added or reordered; the first sync only marks the
+    // selection, so an already-selected point doesn't pop its frame open.
+    let synced = false;
     b.add(() => {
       const sel = store.runtime.selected;
       const isSel = !!sel && sel.quadId === quadId && sel.index === index;
       const wasSel = row.classList.contains('selected');
       row.classList.toggle('selected', isSel);
-      if (isSel && !wasSel) {
+      const first = !synced;
+      synced = true;
+      if (isSel && !wasSel && !first) {
         // Reveal the newly selected point: expand its enclosing sections and scroll to it.
         for (let d = row.closest('details'); d; d = d.parentElement?.closest('details') ?? null) d.open = true;
         row.scrollIntoView({ block: 'nearest' });
