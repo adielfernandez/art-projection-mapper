@@ -10,7 +10,7 @@ export function configSection(ctx: PanelContext): HTMLElement {
   const load = button('Load Show', () => void project.open(confirm));
   load.title = 'Open a show (its project folder)';
   const save = button('Save Show', () => void project.save(confirm), 'primary');
-  save.title = 'Write config.json: mapping, show type, playlists and animation settings. Content is saved in the Assets section.';
+  save.title = 'Save everything: config.json (mapping, show type, playlists, animation settings) and every modified asset pool, copying new files into the folder.';
   const message = h('div', { class: 'message' });
 
   const showTypeButton = (type: ShowType, label: string) => {
@@ -31,7 +31,7 @@ export function configSection(ctx: PanelContext): HTMLElement {
     reopen.hidden = !canReopen;
     reopen.textContent = `Reopen Show: ${rt.reopenName ?? ''}`;
     load.disabled = save.disabled = !project.supported;
-    save.classList.toggle('attention', rt.configDirty);
+    save.classList.toggle('attention', rt.configDirty || rt.assetsDirty);
 
     const m = rt.ioMessage;
     message.hidden = !m;

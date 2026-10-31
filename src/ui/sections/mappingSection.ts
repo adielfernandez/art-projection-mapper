@@ -1,6 +1,6 @@
 import { WALL_QUAD_ID, type QuadId } from '../../state/schema';
 import { CORNER_NAMES, type CornerIndex } from '../../state/store';
-import { Binder, button, checkboxRow, colorCheckRow, colorRow, h, numberInput, numberRow, section, sliderRow, textRow, withHelp } from '../controls';
+import { Binder, button, checkboxRow, colorCheckRow, colorRow, h, numberInput, numberRow, row, section, sliderRow, textRow, withHelp } from '../controls';
 import type { PanelContext } from './context';
 import { playlistBlock } from './playlistBlock';
 
@@ -117,7 +117,52 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
     ),
     convexWarning(ctx, b, id),
     playlistBlock(ctx, b, id),
+    frameTiming(ctx, b, id),
   ], { class: 'quad', headerExtras: [up, down, remove] });
+}
+
+/** Manual show: this frame's own Cycle duration and Transition delay, each optional. */
+function frameTiming(ctx: PanelContext, b: Binder, id: QuadId): HTMLElement {
+  const block = h('div', { class: 'frame-timing' }, [
+    h('div', { class: 'subhead', text: 'Timing (seconds)' }),
+    timingOverride(ctx, b, id, 'cycleDuration', 'Cycle duration', 0.5,
+      'How long each artwork in this playlist holds, fully visible. Tick to set it for this frame; unticked, it uses Cycle duration from the Animation section (shown greyed out).'),
+    timingOverride(ctx, b, id, 'transitionDelay', 'Transition delay', 0,
+      'How long this frame stays black after one artwork fades out, before the next one appears. Tick to set it for this frame; unticked, it uses Transition delay from the Animation section (shown greyed out).'),
+  ]);
+  // Frame playlists (and so their timing) only play in a manual show.
+  b.add(() => (block.hidden = ctx.store.config.showType !== 'manual'));
+  return block;
+}
+
+function timingOverride(
+  ctx: PanelContext,
+  b: Binder,
+  id: QuadId,
+  key: 'cycleDuration' | 'transitionDelay',
+  label: string,
+  min: number,
+  help: string,
+): HTMLElement {
+  const { store } = ctx;
+  const own = () => store.config.frames.find((f) => f.id === id)?.[key] ?? null;
+  const global = () => store.config.animation[key];
+  const toggle = h('input', { type: 'checkbox', class: 'override' });
+  toggle.title = 'Use a value just for this frame';
+  toggle.addEventListener('change', () => {
+    // Turning it on starts from the Animation value, so nothing jumps until it's edited.
+    store.updateFrame(id, { [key]: toggle.checked ? global() : null });
+    toggle.blur();
+  });
+  const input = numberInput(b, { get: () => own() ?? global(), set: (v) => store.updateFrame(id, { [key]: v }), min, step: 0.1, decimals: 2 });
+  const source = h('span', { class: 'muted timing-source' });
+  b.add(() => {
+    const set = own() !== null;
+    toggle.checked = set;
+    input.disabled = !set;
+    source.textContent = set ? 'own' : 'Animation';
+  });
+  return withHelp(row(label, toggle, input, source), help);
 }
 
 /** Turns the frame 90° clockwise about its center (content and captions turn with it). */

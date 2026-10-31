@@ -107,6 +107,26 @@ describe('parseConfig', () => {
     expect(old.config.frames[0]!.title).toBe('Untitled');
   });
 
+  it("parses a frame's own cycle duration and transition delay, with null (or missing) meaning unset", () => {
+    const cfg = defaultConfig(ASPECT);
+    cfg.frames[0]!.cycleDuration = 25;
+    cfg.frames[0]!.transitionDelay = 0;
+    const round = parseConfig(JSON.parse(serializeConfig(cfg)), ASPECT);
+    expect(round.warnings).toEqual([]);
+    expect(round.config).toEqual(cfg);
+
+    const old = parseConfig({ schemaVersion: 2, frames: [{ id: 'x' }] }, ASPECT);
+    expect(old.config.frames[0]).toMatchObject({ cycleDuration: null, transitionDelay: null });
+
+    const bad = parseConfig({ schemaVersion: 2, frames: [{ id: 'x', cycleDuration: 0, transitionDelay: -1 }, { id: 'y', cycleDuration: '5' }] }, ASPECT);
+    expect(bad.config.frames.map((f) => [f.cycleDuration, f.transitionDelay])).toEqual([[null, null], [null, null]]);
+    expect(bad.warnings).toEqual([
+      'frames[0].cycleDuration is invalid; using the Animation setting.',
+      'frames[0].transitionDelay is invalid; using the Animation setting.',
+      'frames[1].cycleDuration is invalid; using the Animation setting.',
+    ]);
+  });
+
   it('falls back to "Untitled" with a warning for a non-string title', () => {
     const { config, warnings } = parseConfig({ schemaVersion: 2, frames: [{ id: 'x', title: 7 }] }, ASPECT);
     expect(config.frames[0]!.title).toBe('Untitled');

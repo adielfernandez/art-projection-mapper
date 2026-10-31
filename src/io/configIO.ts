@@ -49,6 +49,16 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     }
     return v;
   };
+  /** A frame's timing override: null (or missing) means "use the Animation setting". */
+  const optNum = (o: Obj, key: string, path: string, opts: { positive?: boolean }): number | null => {
+    const v = o[key];
+    if (v === undefined || v === null) return null;
+    if (!isNum(v) || v < 0 || (opts.positive && v === 0)) {
+      warnings.push(`${path}.${key} is invalid; using the Animation setting.`);
+      return null;
+    }
+    return v;
+  };
   const color = (o: Obj, key: string, def: string, path: string): string => {
     const v = o[key];
     if (v === undefined) return def;
@@ -179,6 +189,8 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           captionSpacing: num(rawFrame, 'captionSpacing', fallback.captionSpacing, path),
           captionOffsetX: num(rawFrame, 'captionOffsetX', fallback.captionOffsetX, path),
           playlist,
+          cycleDuration: optNum(rawFrame, 'cycleDuration', path, { positive: true }),
+          transitionDelay: optNum(rawFrame, 'transitionDelay', path, {}),
           blend,
         });
       });

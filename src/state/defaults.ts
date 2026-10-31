@@ -56,6 +56,8 @@ export function newFrame(
     captionSpacing: 0.05,
     captionOffsetX: 0,
     playlist: [],
+    cycleDuration: null,
+    transitionDelay: null,
     blend: 'normal',
   };
 }

@@ -16,10 +16,10 @@ const ANIMATION_HELP: Record<keyof AnimationConfig, string> = {
   transitionInStyle:
     'How a new artwork appears. Simple Fade: the whole frame fades up from black. Noise Dissolve: the artwork appears through soft, spreading blotches.',
   cycleDuration:
-    'How long each artwork holds, fully visible, between its transitions. Also the cutoff for videos shorter than this (they loop until it elapses).',
+    'How long each artwork holds, fully visible, between its transitions. Also the cutoff for videos shorter than this (they loop until it elapses). In a manual show a frame can set its own (under its playlist).',
   transitionInDuration: 'How long a new artwork takes to appear (fade or dissolve, see Style above). Pan and zoom already move during it.',
   transitionOutDuration: 'Length of the fade to black before a frame changes artwork. Pan and zoom keep moving until it ends.',
-  transitionDelay: 'How long a frame stays black after one artwork fades out, before the next one appears.',
+  transitionDelay: 'How long a frame stays black after one artwork fades out, before the next one appears. In a manual show a frame can set its own (under its playlist).',
   dissolveSoftness:
     'Edge softness of the noise dissolve-in. Low = crisp, hard-edged blotches; high = wide, gradual edges that read more like a fade.',
   dissolveNoiseScale:

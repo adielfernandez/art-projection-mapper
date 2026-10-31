@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { coverSpan, easedProgress, planMotion, sampleView } from './motion';
+import { defaultConfig } from '../state/defaults';
+import { coverSpan, easedProgress, frameTiming, planMotion, sampleView } from './motion';
 
 const cfg = { cycleDuration: 12, zoomStart: 1.15, panSpeed: 0.03, panAspectThreshold: 1.15, maxHoldDuration: 30 };
 const FRAME = 0.6571;
@@ -122,5 +123,29 @@ describe('sampleView', () => {
     for (const t of [2, 14]) {
       expect(sampleView(plan, 1, FRAME, t + 0.05, total).sx).toBeGreaterThan(sampleView(plan, 1, FRAME, t, total).sx);
     }
+  });
+});
+
+describe('frameTiming', () => {
+  const anim = defaultConfig(16 / 9).animation;
+
+  it('returns the Animation settings unchanged when the frame sets nothing (or there is no frame)', () => {
+    expect(frameTiming(anim, null)).toBe(anim);
+    expect(frameTiming(anim, { cycleDuration: null, transitionDelay: null })).toBe(anim);
+  });
+
+  it("replaces only the values the frame sets, without changing the Animation settings", () => {
+    const before = { ...anim };
+    const own = frameTiming(anim, { cycleDuration: 30, transitionDelay: null });
+    expect(own).toEqual({ ...anim, cycleDuration: 30 });
+    expect(frameTiming(anim, { cycleDuration: null, transitionDelay: 0 })).toEqual({ ...anim, transitionDelay: 0 });
+    expect(anim).toEqual(before);
+  });
+
+  it("drives the hold of the frame's motion plan", () => {
+    const own = frameTiming(anim, { cycleDuration: 30, transitionDelay: null });
+    const input = { kind: 'image', zoom: true, pan: false, assetAspect: 1, frameAspect: 1 } as const;
+    expect(planMotion(input, own).hold).toBe(30);
+    expect(planMotion({ ...input, kind: 'video', videoDuration: 5 }, own)).toEqual({ kind: 'video', hold: 30, loop: true });
   });
 });

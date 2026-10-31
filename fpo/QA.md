@@ -106,6 +106,8 @@ Also watch for:
 - [ ] The same asset never appears twice in a row in one frame.
 - [ ] **Add frame** (to 4) and **remove frame**: cycling continues, and the new frame starts after its stagger delay.
 - [ ] Set **cycleDuration** to 5 and **transitionIn** to 3. The change applies from each frame's next cycle and does not jump.
+- [ ] In a **Manual** show with two frames cycling, tick Frame 1's own **Cycle duration** and set it to 2, and its **Transition delay** to 0. From its next artwork, Frame 1 changes every 2 s with no black gap; Frame 2 keeps the Animation timing. Untick both: Frame 1 goes back to the Animation timing. Save Show, reload and Reopen Show: the overrides are kept.
+- [ ] Give a frame a **Transition delay** of 60. While it's black, change it to 1: the next artwork comes in right away (or 1 s after the frame went black, if that's later), without waiting out the 60 s.
 
 ## 4. Assets panel editing and Save round-trip
 
@@ -115,9 +117,10 @@ Also watch for:
 - [ ] Edit a title. The **Assets** dirty badge appears and the asset pool shows **modified**.
 - [ ] Change a file path to a missing file. It is flagged failed. Change it back, and the error clears and the thumbnail reloads.
 - [ ] Toggle zoom on A01. It takes effect the **next** time A01 appears.
-- [ ] Press **Save** (Assets). Only modified asset pools are rewritten. Open the file and check:
+- [ ] Press **Save Show**. Only modified asset pools are rewritten, along with `config.json`. Open the file and check:
   - In `problems.json`, the top-level `"curator"` field and P11's `"notes"` and `"custom"` fields are still there.
   - In `paintings.json`, the field order is kept, and keys that were never present were not added.
+- [ ] Drop a new file from the desktop onto a pool, put it in a frame's playlist, and press **Save Show** (only that button). Reload the page and **Reopen Show**. The file is in `media/`, listed in the pool, and plays in that playlist (not **missing**).
 - [ ] **Load** with unsaved asset edits asks for confirmation first.
 - [ ] Reload the page with unsaved edits. Chrome shows its "Leave site?" prompt.
 

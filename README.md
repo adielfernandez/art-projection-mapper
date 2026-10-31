@@ -74,6 +74,7 @@ Choose the mode under **Config → Show type**. It's saved with your show.
 - An **empty playlist** leaves the frame black.
 - The same item can appear in several playlists, or several times in one.
 - The item currently on screen is highlighted in the playlist. Changes take effect at the frame's next transition.
+- **Timing per frame:** under its playlist, each frame has **Cycle duration** and **Transition delay**. Unticked, they follow the **Animation** settings (shown greyed out). Tick one to give this frame its own value, for example a longer hold for a frame that plays one slow video. Untick it to go back to the Animation setting.
 - Best for: telling a story, or when a piece belongs in a specific frame.
 
 Switching modes restarts every frame. Your playlists are kept even while you're in Randomized mode.
@@ -130,9 +131,8 @@ On a Mac, use **Cmd** instead of Ctrl, and **Option** instead of Alt. Hotkeys do
 Everything for a show lives in one **project folder**, like `macabre-show/` or `baphomet-show/` in this repo.
 
 - **Load Show** (in **Config**) opens a project folder. Chrome asks permission to view and edit the folder; allow it. If you have unsaved changes, the app asks before discarding them.
-- **Save Show** (in **Config**) writes your mapping, mode, playlists, wallpaper and animation settings into `config.json` in that folder. For a new show, it first asks which folder to keep the show in; pick or create an empty one.
-- **Save Asset Pool** (in each asset pool's header, in the **Assets** section) saves that pool's content: new files, removed items, and edited titles and details. **Save All Assets** at the top of the Assets section saves every pool at once; it only appears when the show has more than one pool.
-- Nothing is written to your folder until you click one of these Save buttons. The **Config** and **Assets** labels at the top of the panel light up while something is unsaved, and the browser warns you if you try to leave the page with unsaved changes.
+- **Save Show** (in **Config**) saves everything: your mapping, mode, playlists, wallpaper and animation settings go into `config.json`, and every changed asset pool is saved too (new files, removed items, and edited titles and details). For a new show, it first asks which folder to keep the show in; pick or create an empty one.
+- Nothing is written to your folder until you click **Save Show**. The **Config** and **Assets** labels at the top of the panel light up while something is unsaved, and the browser warns you if you try to leave the page with unsaved changes.
 - **Reopen Show:** after you reload the page or restart the computer, the app starts as a new, blank show. Click the **Reopen Show: (folder name)** button in **Config** to pick up where you left off (Chrome may ask for permission again).
 - **Starting a new show:** reload the page for a blank show, then save it to a new folder. There's no "Save As"; to start from an existing show, copy its project folder, rename it, and load the copy.
 
@@ -156,7 +156,7 @@ Artwork always fades out to black.
 | **Zoom start**, **Pan speed**, **Pan aspect threshold** | How far zooming images start zoomed in, how fast panning images move, and how different an image's shape must be from the frame before it pans. |
 | **Captions** | Text sizes, spacing, color and how the captions fade in. |
 
-Timing changes apply from each frame's next artwork; the transition style, noise settings and caption look change right away. Hover over any setting for details.
+In **Manual** mode a frame can override **Cycle duration** and **Transition delay** with its own values (see *Modes* above). Timing changes apply from each frame's next artwork, except **Transition delay**, which applies at once (shortening it while a frame is black brings the next artwork in straight away); the transition style, noise settings and caption look change right away. Hover over any setting for details.
 
 ---
 
@@ -185,12 +185,12 @@ my-show/
    In a show with no asset pool yet, the first files go into a new pool called `assets.json`. To use your own pool names instead (for example one for paintings and one for videos), type a name at the bottom of the **Assets** section and click **+ Add asset pool** first. If a pool file with that name is already in the project folder, it's added to the show as it is.
 2. This all works before the show has a folder: new files play straight away, and are copied into the folder when you save.
 3. Fill in each item's **Title**, **Artist** and **Year** for its caption, and tick **Zoom**, **Pan** or **Wall only** if you like.
-4. Click **Save Asset Pool** (or **Save All Assets**). If you created a new pool, also click **Save Show** so the show remembers to use it. In a new show, the first save asks which folder to keep the show in.
+4. Click **Save Show**. In a new show, the first save asks which folder to keep the show in.
 
 Good to know:
-- **Files from elsewhere on your computer** (Downloads, Desktop, a USB stick) are copied into a `media/` folder next to the asset pool when you save it. Until then they're marked **new**, but they already play and show thumbnails. If a file with the same name is already there, the copy gets a number, like `flame (2).mp4`.
+- **Files from elsewhere on your computer** (Downloads, Desktop, a USB stick) are copied into a `media/` folder next to the asset pool when you click **Save Show**. Until then they're marked **new**, but they already play and show thumbnails. If a file with the same name is already there, the copy gets a number, like `flame (2).mp4`.
 - **Files already inside the project folder** are used where they are; nothing is copied. Picking one the pool already lists doesn't add it twice.
-- **Removing an item:** click the **×** on it, then **Save Asset Pool**. It's removed from the show, but the file itself stays on your disk. If a playlist used it, that entry shows as **missing** until you remove it from the playlist. Hover over the **×** to see which playlists use it.
+- **Removing an item:** click the **×** on it, then **Save Show**. It's removed from the show, but the file itself stays on your disk. If a playlist used it, that entry shows as **missing** until you remove it from the playlist. Hover over the **×** to see which playlists use it.
 - **Removing an asset pool:** click the red **×** in the pool's header, then **Save Show**. The pool file and its media stay on your disk. A show always keeps at least one pool, so the **×** is hidden on the last one.
 - Short confirmation messages ("Added 1 file…", "Saved…") fade away after a few seconds. Warnings, such as a file that couldn't be added, stay until the next message.
 
@@ -246,5 +246,5 @@ Leave out `title`, `artist` and `year` entirely (or leave them empty) and no cap
 - **Everything is cropped to fill the frame.** Artwork is scaled to cover the whole frame (or the whole wall, for wallpaper), so parts of a picture with a very different shape are cut off unless `pan` is on. Choose or crop artwork close to each frame's shape for best results.
 - **Video length.** A video longer than **Cycle duration** plays to its end before changing. A shorter one loops until the cycle time is up.
 - **Keep videos reasonable.** A frame on the wall is usually a few hundred pixels wide in the projected image, so very large or 4K videos waste power. Around 720p at a good quality setting is plenty for a frame; wallpaper covers the whole wall, so it can use the full projector resolution.
-- **Editing in the app.** Everything in an asset pool can be changed in the **Assets** section: add and remove items, and edit titles, artists, years, paths and the Zoom, Pan and Wall only checkboxes. Click **Save Asset Pool** to write the changes to the file.
+- **Editing in the app.** Everything in an asset pool can be changed in the **Assets** section: add and remove items, and edit titles, artists, years, paths and the Zoom, Pan and Wall only checkboxes. Click **Save Show** to write the changes to the file.
 - **Renaming a file used in a playlist?** If you change its `filepath` in the Assets section, playlists follow along automatically. If you rename it by editing the JSON instead, update the playlists too, or those entries will show as missing.

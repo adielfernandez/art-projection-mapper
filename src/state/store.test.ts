@@ -431,3 +431,16 @@ describe('Store adding and removing content', () => {
     expect(store.pools).toHaveLength(1);
   });
 });
+
+describe('Store frame timing overrides', () => {
+  it("sets and clears a frame's own cycle duration and transition delay", () => {
+    const { store } = makeStore();
+    const id = store.config.frames[0]!.id;
+    store.updateFrame(id, { cycleDuration: 20, transitionDelay: 1.5 });
+    expect(store.config.frames[0]).toMatchObject({ cycleDuration: 20, transitionDelay: 1.5 });
+    expect(store.runtime.configDirty).toBe(true);
+    store.updateFrame(id, { cycleDuration: null });
+    expect(store.config.frames[0]).toMatchObject({ cycleDuration: null, transitionDelay: 1.5 });
+    expect(store.config.frames[1]).toMatchObject({ cycleDuration: null, transitionDelay: null });
+  });
+});

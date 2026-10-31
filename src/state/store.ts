@@ -80,7 +80,9 @@ export type Listener = (e: StoreEvent) => void;
 /** Homomorphic, so tuples (e.g. corner points) stay tuples. */
 export type DeepReadonly<T> = T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T;
 
-export type FrameSettings = Partial<Pick<FrameConfig, 'title' | 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'captionOffsetX' | 'blend'>>;
+export type FrameSettings = Partial<
+  Pick<FrameConfig, 'title' | 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'captionOffsetX' | 'blend' | 'cycleDuration' | 'transitionDelay'>
+>;
 
 interface PointChange {
   index: CornerIndex;
@@ -572,6 +574,9 @@ export class Store {
     if (patch.captionSpacing !== undefined) f.captionSpacing = patch.captionSpacing;
     if (patch.captionOffsetX !== undefined) f.captionOffsetX = patch.captionOffsetX;
     if (patch.blend !== undefined) f.blend = patch.blend;
+    // null clears an override (the frame follows the Animation setting again).
+    if (patch.cycleDuration !== undefined) f.cycleDuration = patch.cycleDuration;
+    if (patch.transitionDelay !== undefined) f.transitionDelay = patch.transitionDelay;
     this.markConfigDirty();
     this.emit((e) => (e.frames = true));
   }

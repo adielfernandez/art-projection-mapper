@@ -1,9 +1,9 @@
 import type * as THREE from 'three';
-import { WALL_QUAD_ID, type AssetEntry, type PlaylistItem, type ShowType } from '../state/schema';
+import { WALL_QUAD_ID, type AnimationConfig, type AssetEntry, type PlaylistItem, type ShowType } from '../state/schema';
 import type { Store } from '../state/store';
 import { mediaKind, playableAssets, randomizedMode, staticAssignments, type FrameMode } from './selection';
 import { loadImage, loadVideo, type ImageSizing, type LoadedMedia } from './mediaLoader';
-import { planMotion, sampleView, type MotionPlan, type View } from './motion';
+import { frameTiming, planMotion, sampleView, type MotionPlan, type View } from './motion';
 import { nextEntry, playlistMode, relocateAnchor, resolvePlaylist, START_ANCHOR, type Anchor, type PlaylistEntry } from './playlist';
 import { ShuffleBag } from './shuffleBag';
 
@@ -64,8 +64,13 @@ class FramePlayer {
   mode: FrameMode = 'empty';
   state: PlayerState = 'loading';
   t = 0;
-  /** Scheduler time before which the next in-transition may not start (stagger, transition delay). */
+  /** Scheduler time before which the next in-transition may not start (stagger, mode change). */
   startAt = 0;
+  /**
+   * Scheduler time the frame went black after a fade-out, or null. The next artwork waits the
+   * transition delay from here, read each tick, so editing the delay applies at once.
+   */
+  blackSince: number | null = null;
   current: Slot | null = null;
   next: Pending | null = null;
   inDur = 0;
@@ -81,6 +86,7 @@ class FramePlayer {
   constructor(readonly id: string) {}
 
   release(): void {
+    this.blackSince = null;
     this.current?.media.dispose();
     this.current = null;
     if (this.next) {
@@ -342,6 +348,13 @@ export class Scheduler {
   // ---------- loading ----------
 
   /** Width ÷ height of what a player fills: a frame's physical aspect, or the wall's (the canvas). */
+  /** Animation settings for a player, with a manual-show frame's own timing overrides. */
+  private timingOf(p: FramePlayer): AnimationConfig {
+    const cfg = this.store.config;
+    const own = cfg.showType === 'manual' && p.id !== WALL_QUAD_ID ? (cfg.frames.find((f) => f.id === p.id) ?? null) : null;
+    return frameTiming(cfg.animation, own);
+  }
+
   private aspectOf(id: string): number {
     if (id === WALL_QUAD_ID) {
       const { w, h } = this.store.runtime.viewport;
@@ -452,12 +465,14 @@ export class Scheduler {
   }
 
   private updateCycling(p: FramePlayer): void {
-    const anim = this.store.config.animation;
+    const anim = this.timingOf(p);
     switch (p.state) {
       case 'loading': {
         this.trySelect(p);
         const n = p.next;
         if (!n?.media || this.clock < p.startAt) return;
+        if (p.blackSince !== null && this.clock < p.blackSince + anim.transitionDelay) return;
+        p.blackSince = null;
         const entry = { ...(this.store.findAsset(n.uid)?.entry ?? { filepath: '' }) };
         const plan = planMotion(
           {
@@ -519,7 +534,7 @@ export class Scheduler {
           p.current = null;
           p.state = 'loading';
           p.t = 0;
-          p.startAt = this.clock + anim.transitionDelay; // hold on black before the next artwork
+          p.blackSince = this.clock; // hold on black for the transition delay before the next artwork
         }
         return;
       case 'static':

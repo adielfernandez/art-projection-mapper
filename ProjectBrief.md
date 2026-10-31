@@ -40,7 +40,7 @@ Approved dependencies are exactly: `three`, `@types/three`, `vite`, `typescript`
   - dirty flags
   - playback state
 - All mutations go through store actions. The renderer and the panel subscribe to the store; neither mutates state directly.
-- There are two dirty flags, one for the config and one for the asset pools. Each is cleared only by its own Save.
+- There are two dirty flags, one for the config and one for the asset pools. Save Show clears both (each pool's flag once that pool is written).
 - **No autosave.** Nothing is written to disk except by an explicit Save button press.
 
 ### 3.2 Coordinate spaces
@@ -153,6 +153,8 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
       "playlist": [
         { "pool": "pools/paintings.json", "filepath": "media/nightmare.jpg" }
       ],
+      "cycleDuration": null,
+      "transitionDelay": null,
       "blend": "normal"
     }
   ],
@@ -187,6 +189,7 @@ Field notes:
 - **`inset`** (per-edge masking) was removed: corrections are made with the control points. An `inset` key in an older file is ignored and dropped on the next save.
 - **`showType`** is `"randomized"` (default) or `"manual"`. See 5.3.
 - **`playlist`** (per frame, default `[]`) lists the assets the frame plays in a manual show, in order. Each entry names an asset by its asset pool path (`pool`, as listed in `assetPools`) and its `filepath` in that pool; if several assets share a filepath, the first is used. Duplicates are allowed, within one playlist and across frames. Entries whose asset can't be found are kept and skipped. Playlists are kept, but ignored, in a randomized show.
+- **`cycleDuration`, `transitionDelay`** (per frame, default `null`): a manual-show frame's own values for `animation.cycleDuration` and `animation.transitionDelay`. `null` (or missing) uses the animation setting. An invalid value (not a number, negative, or a zero cycle duration) falls back to `null` with a warning. Ignored in a randomized show and by the wall.
 - **`blend`** (per frame, `"normal"` or `"add"`, default `"normal"`). `"normal"` covers whatever is behind the frame. `"add"` adds the frame's light to it, so black (including black gaps between assets and an empty frame) is transparent and frames drawn earlier show through. Meant for bright content on black (fire, glows). Additive content only adds light, so it cannot hide what's behind it, and overlapping bright areas can clip to white.
 - **`panSpeed`** is in frame widths per second.
 - **Durations** are in seconds.
@@ -234,11 +237,10 @@ An asset pool is a JSON file listing media. A project can have several (for exam
 ### 5.1 Startup and file I/O
 
 - **On launch with a stored folder handle:** the app keeps the last project folder's directory handle in IndexedDB. This is a pointer only, not saved state. If one exists, show a "Reopen Show: <folder name>" button. Chrome requires a user gesture to re-grant permission. On grant, load `config.json` and all asset pools from disk.
-- **On launch** (and when a folder without `config.json` is opened) the app shows the default project as a new show: two frames, with the wall's and every frame's test pattern on. Content can be added before the show has a folder (see *Adding content*); the first Save (Show, Asset Pool or All Assets) asks for a folder, confirming before overwriting any file it is about to write that already exists there, and that folder becomes the show's folder.
+- **On launch** (and when a folder without `config.json` is opened) the app shows the default project as a new show: two frames, with the wall's and every frame's test pattern on. Content can be added before the show has a folder (see *Adding content*); the first Save Show asks for a folder, confirming before overwriting any file it is about to write that already exists there, and that folder becomes the show's folder.
 - **Panel Config section:**
   - **Load Show** opens a project folder.
-  - **Save Show** writes `config.json`.
-- **Panel Asset section:** each asset pool has its own **Save Asset Pool**, which copies that pool's staged files (below) into the folder and then writes the pool file. **Save All Assets** does this for every modified pool and is shown only when there are two or more pools.
+  - **Save Show** saves everything. For each modified asset pool it copies that pool's staged files (below) into the folder and writes the pool file; then it writes `config.json`. Pools go first so the config is never saved pointing at assets that were not written. If a write fails, the pools already written stay saved and the config is not written. There is no separate pool save.
 - **Adding content** (section 5.6) never writes to disk by itself, and works with or without a folder:
   - A file picked or dropped from **inside** the project folder is listed by its path relative to the pool (found with `FileSystemDirectoryHandle.resolve`). Nothing is copied.
   - A file from **outside** the folder is *staged*: held in memory under `media/<name>` next to the pool, playable and thumbnailed from memory, and copied there on that pool's next save. If the name is taken on disk or by another staged file (compared without case), the copy is numbered: `name (2).ext`. Names are checked again at save time (a new show's folder is only known then): a taken path gets the next numbered name, and playlists follow. A save never overwrites an existing media file.
@@ -248,7 +250,7 @@ An asset pool is a JSON file listing media. A project can have several (for exam
 - **Removing content:** × on an asset removes it from its pool. The media file is never deleted. Playlist entries that used it are kept and flagged missing.
 - **Removing an asset pool:** a red × in the pool's header removes it from the show and from `assetPools` (config modified). A pool with unsaved changes that lists assets asks for confirmation first; an empty pool is removed at once (nothing would be lost). The pool file and media stay on disk; playlist entries that used it are flagged missing. The × is hidden while only one pool remains.
 - **New assets** are written with `filepath`, `zoom: false` and `pan: false`; `title`, `artist` and `year` once filled in.
-- **Adding an asset pool:** a name typed in the Asset section becomes `<name>.json` at the project root and is added to `assetPools` (config modified). If that file exists it is loaded as is; otherwise an empty pool is created and written on its first save. Pool names are compared without case, so `Art.json` and `art.json` can't both be added.
+- **Adding an asset pool:** a name typed in the Asset section becomes `<name>.json` at the project root and is added to `assetPools` (config modified). If that file exists it is loaded as is; otherwise an empty pool is created and written on the next Save Show. Pool names are compared without case, so `Art.json` and `art.json` can't both be added.
 - Files dropped anywhere outside a drop zone are ignored, so the browser never navigates away from the show.
 - **Unsaved changes:**
   - An indicator in the panel header for each of config and assets.
@@ -322,7 +324,7 @@ An asset pool is a JSON file listing media. A project can have several (for exam
 - **Manual:** each frame plays its own `playlist`, in order, independently of the other frames. A frame's mode follows the number of playable entries in its playlist (entries that are missing or failed to load don't count):
   - **0:** the frame stays black.
   - **1:** static, with the same rules as static mode below.
-  - **2 or more:** the cycle in 5.4, stepping through the playlist in order and looping. No exclusion between frames. `frameStagger` applies when the show starts.
+  - **2 or more:** the cycle in 5.4, stepping through the playlist in order and looping. No exclusion between frames. `frameStagger` applies when the show starts. The frame's own `cycleDuration` and `transitionDelay` (section 3), where set, replace the animation settings for it, including in the motion rules (a video shorter than the frame's cycle duration loops until it ends, and so on).
   - **Live edits** apply at the next transition: the asset on screen finishes its cycle, then the frame continues with the updated list. The position is tracked by entry, so a moved entry keeps its place in the sequence, and removing the entry on screen plays the one that took its place next. Changes that move a frame between 0, 1 and 2+ entries apply immediately; a static frame swaps to a new single asset immediately.
   - **Asset filepath edits** in the Assets panel carry over to playlist entries (marking the config modified).
 
@@ -406,7 +408,7 @@ Selection logic gets Vitest coverage:
 
 **Motion window.** Pan and zoom run from the start of the in-transition to the end of the out-transition (`transitionInDuration + hold + transitionOutDuration`), so motion never visibly starts or stops. The hold durations above are unchanged; the same travel or zoom is spread over the longer window, so the actual speed is slightly below `panSpeed`. Both transition durations are fixed when the in-transition starts.
 
-**Edits during playback.** Changes to timing parameters apply from the next cycle. Changes to the playing asset's fields apply at its next appearance.
+**Edits during playback.** Changes to timing parameters apply from the next cycle, except `transitionDelay` (global or a frame's own), which is read live: the black gap is measured from when the frame went black, so a frame already black longer than the new delay brings the next artwork in at once. Changes to the playing asset's fields apply at its next appearance.
 
 ### 5.5 Captions
 
@@ -443,7 +445,7 @@ Selection logic gets Vitest coverage:
 
 ### 5.6 Side panel
 
-**Confirmations** are inline, never native dialogs. They appear right below the control that asked: under a pool's header for its × and Save Asset Pool (opening the pool if collapsed), and below Save All Assets for that button. Others (Load Show, Save Show) use a bar at the top of the panel.
+**Confirmations** are inline, never native dialogs. They appear right below the control that asked: under a pool's header for its × (opening the pool if collapsed). Others (Load Show, Save Show) use a bar at the top of the panel.
 
 **Toggling and placement:**
 - `X` toggles the panel.
@@ -481,11 +483,11 @@ Selection logic gets Vitest coverage:
      - caption X offset and caption Y offset (slider and number)
      - convexity warning when applicable
      - playlist (manual show only; hidden when randomized): one row per entry with thumbnail, title, and ↑ ↓ × buttons; the entry on screen is highlighted; missing or failed entries are flagged. "+ Add asset" opens a thumbnail picker of every loaded asset, grouped by asset pool; clicking one appends it.
+     - timing (manual show only): "Cycle duration" and "Transition delay" rows, each a checkbox plus a seconds field. Unticked, the field is disabled and shows the Animation value ("Animation"); ticking copies that value in as the frame's own ("own"), and unticking clears it to `null`.
      - in the playlist picker, an "Import new files…" tile (file picker) and, with several pools, an "Into asset pool" chooser. Files dropped on the playlist do the same. Imported files are added to that pool (section 5.1) and appended to this playlist. A short note ("Added 2 to this playlist.") confirms it and fades out after 4 seconds. The Assets section's own messages do the same when they are informational ("Added 1 file to assets.json…", "Saved…"); warnings and errors stay until the next message.
    - "Add new frame" button.
 4. **Assets:**
-   - "Save All Assets" button, shown only with two or more pools.
-   - Nested list grouped by asset pool file. Each pool's header has a count, modified/error badges, a "Save Asset Pool" button and a red × (hidden for the last pool). Its body ends with "+ Add files…" (multi-select file picker), and the whole pool accepts files dropped from the OS (highlighted while dragging).
+   - Nested list grouped by asset pool file. Each pool's header has a count, modified/error badges and a red × (hidden for the last pool). Its body ends with "+ Add files…" (multi-select file picker), and the whole pool accepts files dropped from the OS (highlighted while dragging).
    - Each asset is collapsible, with a small preview thumbnail (or video poster), a "new" badge while its file is staged, a × remove button whose hover note says the file stays on disk (and names any frames whose playlists use it), and editable fields:
      - text inputs for `title`, `artist`, `year`, `filepath`
      - checkboxes for `zoom`, `pan`, "Wall only" (`wallOnly`)

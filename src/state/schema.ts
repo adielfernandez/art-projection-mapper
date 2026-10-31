@@ -33,6 +33,10 @@ export interface FrameConfig {
   captionOffsetX: number;
   /** Manual show: assets this frame plays, in order. Ignored in randomized shows. */
   playlist: PlaylistItem[];
+  /** Manual show: this frame's Cycle duration, in seconds; null uses the Animation setting. */
+  cycleDuration: number | null;
+  /** Manual show: this frame's Transition delay, in seconds; null uses the Animation setting. */
+  transitionDelay: number | null;
   /** 'add': the frame adds its light to frames drawn before it, so its black is see-through. */
   blend: BlendMode;
 }

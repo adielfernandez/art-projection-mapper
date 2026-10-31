@@ -8,15 +8,12 @@ import { frameLabel } from './mappingSection';
 
 /**
  * Assets: asset pools (grouped), each asset editable live. Files can be added with a picker
- * or by dropping them on a pool, and removed with ×. Each pool has its own Save; "Save All
- * Assets" appears when there are several. Nothing is written otherwise.
+ * or by dropping them on a pool, and removed with ×. Save Show (in Config) writes every
+ * modified pool; nothing is written otherwise.
  */
 export function assetsSection(ctx: PanelContext): HTMLElement {
   const { store, project, binder } = ctx;
 
-  const saveAll = button('Save All Assets', () => void project.saveAllAssets(ctx.confirmAt(saveAllRow)), 'primary');
-  saveAll.title = 'Save every modified asset pool, copying in any new files';
-  const saveAllRow: HTMLElement = h('div', { class: 'button-row' }, [saveAll]);
   const message = h('div', { class: 'message' });
   message.hidden = true;
   let shownMessage: typeof store.runtime.assetMessage | undefined;
@@ -64,9 +61,6 @@ export function assetsSection(ctx: PanelContext): HTMLElement {
 
   binder.add(() => {
     const rt = store.runtime;
-    saveAllRow.hidden = store.pools.length < 2;
-    saveAll.disabled = !rt.assetsDirty;
-    saveAll.classList.toggle('attention', rt.assetsDirty);
     // A new message shows; info ("Added…", "Saved…") fades after a few seconds, warnings and errors stay.
     const m = rt.assetMessage;
     if (m !== shownMessage) {
@@ -78,7 +72,7 @@ export function assetsSection(ctx: PanelContext): HTMLElement {
     listBinder.syncAll();
   });
 
-  const el = section(ctx.openState, 'assets', 'Assets', [saveAllRow, message, list, addPoolRow]);
+  const el = section(ctx.openState, 'assets', 'Assets', [message, list, addPoolRow]);
   // With no pool to drop onto, the whole section takes files (into the default pool).
   dropZone(el, (dt) => void project.importDrop(null, dt), () => !store.pools.some((m) => !m.error));
   return el;
@@ -103,8 +97,6 @@ function poolGroup(ctx: PanelContext, b: Binder, thumbs: Thumbnails, path: strin
   // Confirmations for this pool appear right under its header (set once the section exists).
   let header: HTMLElement | null = null;
   const confirmHere: ConfirmFn = (message, label) => (header ? ctx.confirmAt(header) : ctx.confirm)(message, label);
-  const save = button('Save Asset Pool', () => void project.savePool(path, confirmHere), 'small primary');
-  save.title = `Write ${path}, copying any new files into the project folder`;
   const remove = withHelp(button('×', () => {
     const cur = pool();
     // Only ask when something would be lost: unsaved changes to a pool that lists assets.
@@ -120,9 +112,6 @@ function poolGroup(ctx: PanelContext, b: Binder, thumbs: Thumbnails, path: strin
     modified.hidden = !cur.dirty;
     failed.hidden = !cur.error && errs === 0;
     failed.textContent = cur.error ? 'error' : `${errs} failed`;
-    save.hidden = !!cur.error;
-    save.disabled = !cur.dirty;
-    save.classList.toggle('attention', cur.dirty);
     // The last pool can't be removed (a show without pools has nothing to add content to).
     remove.hidden = store.pools.length < 2;
     const frames = store.config.frames;
@@ -154,7 +143,7 @@ function poolGroup(ctx: PanelContext, b: Binder, thumbs: Thumbnails, path: strin
   }
 
   const details = section(ctx.openState, `pool:${path}`, h('span', { class: 'title' }, [h('span', { class: 'asset-name', text: path })]), body, {
-    headerExtras: [failed, modified, count, save, remove],
+    headerExtras: [failed, modified, count, remove],
     class: m.error ? 'pool broken' : 'pool',
   });
   header = details.querySelector(':scope > summary');
@@ -179,7 +168,7 @@ function assetItem(ctx: PanelContext, b: Binder, thumbs: Thumbnails, uid: string
   const name = h('span', { class: 'asset-name' });
   const err = h('span', { class: 'badge error', text: 'failed' });
   const fresh = h('span', { class: 'badge live', text: 'new' });
-  fresh.title = 'Added from outside the project folder. It is copied into the folder when you save this asset pool.';
+  fresh.title = 'Added from outside the project folder. It is copied into the folder on Save Show.';
   const errText = h('div', { class: 'warning' });
   const remove = withHelp(button('×', () => store.removeAsset(uid), 'small danger'), '');
 

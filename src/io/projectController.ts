@@ -56,7 +56,7 @@ export class ProjectController {
   private loadToken = 0;
   /**
    * Files added from outside the project folder, by asset uid. They play from memory and
-   * are copied into the folder when their pool is saved (never before: disk writes only on Save).
+   * are copied into the folder on Save Show (never before: disk writes only on Save).
    */
   private staged = new Map<string, File>();
 
@@ -66,7 +66,7 @@ export class ProjectController {
     return isFileSystemAccessSupported();
   }
 
-  /** The asset's file was added from outside the folder and is copied on the next pool save. */
+  /** The asset's file was added from outside the folder and is copied on the next Save Show. */
   isStaged(uid: string): boolean {
     return this.staged.has(uid);
   }
@@ -114,26 +114,43 @@ export class ProjectController {
     if (handle) await this.loadFrom(handle);
   }
 
-  /** Write config.json. With no folder open, asks for one first. */
+  /**
+   * Save Show: write every modified asset pool (copying in its new files), then config.json.
+   * Pools go first, so the config never points at assets that were not written.
+   * With no folder open, asks for one first.
+   */
   async save(confirm: ConfirmFn): Promise<void> {
+    const pools = this.store.pools.filter((m) => m.dirty && !m.error).map((m) => m.path);
     let root = this.root;
+    let copied = 0;
     try {
       if (!root) {
-        root = await this.chooseFolder(confirm, [CONFIG_PATH]);
+        root = await this.chooseFolder(confirm, [CONFIG_PATH, ...pools]);
         if (!root) return;
       } else if (!(await ensurePermission(root))) {
         this.store.setIoMessage({ kind: 'warn', text: 'Write permission was not granted; nothing saved.' });
         return;
       }
+      for (const path of pools) {
+        await this.renameTakenStaged(root, path);
+        const snap = this.store.poolSnapshot(path);
+        if (!snap) continue;
+        copied += await this.copyStaged(root, snap);
+        await savePool(root, snap);
+        this.store.markPoolSaved(path);
+      }
       await saveConfig(root, this.store.configSnapshot());
     } catch (err) {
+      // Pools saved before the failure stay saved (and marked so); the rest are still modified.
       this.fail('Save failed', err);
+      if (root) await this.adoptFolder(root);
       return;
     }
     await this.adoptFolder(root);
     this.store.markConfigSaved();
-    const pending = this.store.runtime.assetsDirty ? ' Content changes are not saved yet: use Save Asset Pool in the Assets section.' : '';
-    this.store.setIoMessage({ kind: 'info', text: `Saved ${CONFIG_PATH} at ${new Date().toLocaleTimeString()}.${pending}` });
+    const written = [CONFIG_PATH, ...pools].join(', ');
+    const files = copied ? ` and copied ${copied} file${copied === 1 ? '' : 's'}` : '';
+    this.store.setIoMessage({ kind: 'info', text: `Saved ${written}${files} at ${new Date().toLocaleTimeString()}.` });
   }
 
   /**
@@ -159,46 +176,6 @@ export class ProjectController {
     await storeHandle(root);
     this.store.setFolderName(root.name);
     this.store.setReopenName(root.name);
-  }
-
-  /** Save every modified asset pool ("Save All Assets"). */
-  async saveAllAssets(confirm: ConfirmFn): Promise<void> {
-    await this.savePools(this.store.pools.filter((m) => m.dirty && !m.error).map((m) => m.path), confirm);
-  }
-
-  /** Save one asset pool ("Save Asset Pool"): copy its new files into the folder, then write the pool file. */
-  async savePool(path: string, confirm: ConfirmFn): Promise<void> {
-    await this.savePools([path], confirm);
-  }
-
-  private async savePools(paths: readonly string[], confirm: ConfirmFn): Promise<void> {
-    if (paths.length === 0) return;
-    let root = this.root;
-    try {
-      if (!root) {
-        root = await this.chooseFolder(confirm, paths);
-        if (!root) return;
-        await this.adoptFolder(root);
-      } else if (!(await ensurePermission(root))) {
-        this.store.setAssetMessage({ kind: 'warn', text: 'Write permission was not granted; nothing saved.' });
-        return;
-      }
-      let copied = 0;
-      for (const path of paths) {
-        await this.renameTakenStaged(root, path);
-        const snap = this.store.poolSnapshot(path);
-        if (!snap) continue;
-        copied += await this.copyStaged(root, snap);
-        await savePool(root, snap);
-        this.store.markPoolSaved(path);
-      }
-      const files = copied ? ` and copied ${copied} file${copied === 1 ? '' : 's'}` : '';
-      const show = this.store.runtime.configDirty ? ' Use Save Show to save the rest of the show.' : '';
-      this.store.setAssetMessage({ kind: 'info', text: `Saved ${paths.join(', ')}${files} at ${new Date().toLocaleTimeString()}.${show}` });
-    } catch (err) {
-      console.error('Asset save failed', err);
-      this.store.setAssetMessage({ kind: 'error', text: `Save failed: ${err instanceof Error ? err.message : String(err)}` });
-    }
   }
 
   /**
@@ -341,7 +318,7 @@ export class ProjectController {
 
   private reportImport(poolPath: string, r: ImportResult): ImportResult {
     const parts: string[] = [];
-    if (r.added) parts.push(`Added ${r.added} file${r.added === 1 ? '' : 's'} to ${poolPath}. Save the asset pool to keep ${r.added === 1 ? 'it' : 'them'}.`);
+    if (r.added) parts.push(`Added ${r.added} file${r.added === 1 ? '' : 's'} to ${poolPath}. Save Show to keep ${r.added === 1 ? 'it' : 'them'}.`);
     if (r.reused) parts.push(`${r.reused} ${r.reused === 1 ? 'was' : 'were'} already in ${poolPath}.`);
     if (r.skipped.length) parts.push(`Skipped ${r.skipped.length}: ${r.skipped.join('; ')}`);
     if (parts.length) this.store.setAssetMessage({ kind: r.skipped.length ? 'warn' : 'info', text: parts.join(' ') });
@@ -371,7 +348,7 @@ export class ProjectController {
         this.store.setAssetMessage({ kind: 'info', text: `Added the existing ${path}. Save Show to keep it in the show.` });
       } else {
         this.store.addPool(newPoolRecord(path));
-        this.store.setAssetMessage({ kind: 'info', text: `Created ${path}. Save Asset Pool to write it, and Save Show to keep it in the show.` });
+        this.store.setAssetMessage({ kind: 'info', text: `Created ${path}. Save Show to write it and keep it in the show.` });
       }
     } catch (err) {
       return err instanceof Error ? err.message : String(err);

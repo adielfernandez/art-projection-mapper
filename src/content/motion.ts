@@ -1,4 +1,4 @@
-import type { AnimationConfig } from '../state/schema';
+import type { AnimationConfig, FrameConfig } from '../state/schema';
 
 /**
  * The visible part of a texture: center (cx, cy) and span (sx, sy), all in texture
@@ -51,6 +51,22 @@ export interface MotionInput {
   pan: boolean;
   assetAspect: number;
   frameAspect: number;
+}
+
+/**
+ * Animation settings for one player: a manual-show frame's own Cycle duration and
+ * Transition delay replace the global ones where set. Pass null for no overrides.
+ */
+export function frameTiming(
+  anim: AnimationConfig,
+  frame: Pick<FrameConfig, 'cycleDuration' | 'transitionDelay'> | null,
+): AnimationConfig {
+  if (!frame || (frame.cycleDuration === null && frame.transitionDelay === null)) return anim;
+  return {
+    ...anim,
+    cycleDuration: frame.cycleDuration ?? anim.cycleDuration,
+    transitionDelay: frame.transitionDelay ?? anim.transitionDelay,
+  };
 }
 
 type MotionConfig = Pick<
