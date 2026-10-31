@@ -16,6 +16,12 @@
       "filepath": "media/baphomet-sigil.mp4",
       "zoom": false,
       "pan": false
+    },
+    {
+      "filepath": "media/as-above-so-below-square.mp4",
+      "zoom": false,
+      "pan": false,
+      "wallOnly": false
     }
   ]
 }
