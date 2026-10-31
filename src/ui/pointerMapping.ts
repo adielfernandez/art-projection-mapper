@@ -64,11 +64,14 @@ export function attachPointerMapping(target: HTMLElement, canvas: HTMLCanvasElem
     return best;
   };
 
-  /** Topmost frame (frames draw in config order, so the last one is on top) containing the point. Never the wall. */
+  /**
+   * Topmost handled frame (frames draw in list order, so the last one is on top) containing the
+   * point: a mapped frame, or one of the edited entry's frames. Never the wall.
+   */
   const frameAt = (x: number, y: number): QuadId | null => {
     const { w, h } = store.runtime.viewport;
     const p: [number, number] = [x / w, y / h];
-    const frames = store.config.frames;
+    const frames = store.handledFrames();
     for (let i = frames.length - 1; i >= 0; i--) {
       if (pointInPolygon(p, frames[i]!.corners)) return frames[i]!.id;
     }

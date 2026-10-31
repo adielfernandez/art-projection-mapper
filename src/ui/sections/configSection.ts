@@ -10,7 +10,7 @@ export function configSection(ctx: PanelContext): HTMLElement {
   const load = button('Load Show', () => void project.open(confirm));
   load.title = 'Open a show (its project folder)';
   const save = button('Save Show', () => void project.save(confirm), 'primary');
-  save.title = 'Write config.json: mapping, show type, playlists and animation settings. Content is saved in the Assets section.';
+  save.title = 'Write config.json: mapping, show type, choreography, wallpaper and animation settings. Content is saved in the Assets section.';
   const message = h('div', { class: 'message' });
 
   const showTypeButton = (type: ShowType, label: string) => {
@@ -19,8 +19,10 @@ export function configSection(ctx: PanelContext): HTMLElement {
     return btn;
   };
   const showType = withHelp(
-    row('Show type', h('div', { class: 'segmented' }, [showTypeButton('randomized', 'Randomized'), showTypeButton('manual', 'Manual')])),
-    "Randomized: all frames draw from every asset pool, shuffled (except assets marked Wall only). Manual: each frame plays its own playlist (in its Mapping section) in order; one asset stays up, an empty playlist stays black. The wall's wallpaper plays its own playlist either way. Switching restarts every frame (not the wallpaper). Saved with the show.",
+    row('Show type', h('div', { class: 'segmented' }, [showTypeButton('randomized', 'Randomized'), showTypeButton('choreographed', 'Choreographed')])),
+    "Randomized: the frames in Mapping draw from every asset pool, shuffled (except assets marked Wall only), with captions. " +
+      'Choreographed: the entries in the Choreography section play in order and loop, each a timed scene of its own frames, crossfading into the next; no captions. ' +
+      "The wall's wallpaper plays its own playlist either way. Switching restarts the frames (not the wallpaper). Both modes' settings are kept. Saved with the show.",
   );
 
   binder.add(() => {

@@ -113,3 +113,27 @@ export function sampleView(
   }
   return view;
 }
+
+/**
+ * Choreographed frames: Randomized mode's pan / zoom rules, with no motion for video. The plan's
+ * hold is unused; the motion spans the frame's own timeline instead (choreoMotionSpan).
+ */
+export function planChoreoMotion(
+  input: Omit<MotionInput, 'videoDuration'>,
+  cfg: Pick<AnimationConfig, 'zoomStart' | 'panAspectThreshold'>,
+  rng: () => number = Math.random,
+): MotionPlan | null {
+  if (input.kind === 'video') return null;
+  const plan = planMotion(input, { ...cfg, cycleDuration: 1, panSpeed: 1, maxHoldDuration: 1 }, rng);
+  return plan.kind === 'static' ? null : plan;
+}
+
+/**
+ * Seconds a choreographed frame's motion spans: its whole visible time, from the start of its
+ * fade in to the end of its fade out. An open end (an image that lasts until the entry ends)
+ * uses holdTime − delay. Null when neither is known (no motion).
+ */
+export function choreoMotionSpan(end: number | null, holdTime: number | null, delay: number): number | null {
+  if (end !== null) return end;
+  return holdTime !== null ? Math.max(0, holdTime - delay) : null;
+}

@@ -1,15 +1,18 @@
 import { quadIsValid, rotateQuadClockwise } from '../math/geometry';
 import type { Quad } from '../math/homography';
-import { newFrame } from './defaults';
+import { generateEntryId, generateFrameId, newChoreoFrame, newEntry, newFrame, nextFrameColor } from './defaults';
 import {
   WALL_QUAD_ID,
   type AnimationConfig,
   type AssetEntry,
   type AssetRecord,
   type CaptionConfig,
+  type ChoreoFrameConfig,
+  type ChoreographyConfig,
   type Config,
   type Corners,
   type DebugStyle,
+  type EntryConfig,
   type FrameConfig,
   type PoolRecord,
   type NormPoint,
@@ -50,6 +53,10 @@ export interface RuntimeState {
   assetMessage: IoMessage | null;
   /** Media load errors by asset uid. Flagged assets are never played. */
   assetErrors: Record<string, string>;
+  /** Choreographed mode: the most recently opened entry section. Only its frames get handles. */
+  editedEntryId: string | null;
+  /** Choreographed mode: draw only this frame (while mapping it). */
+  soloFrameId: string | null;
 }
 
 export interface IoMessage {
@@ -65,7 +72,7 @@ export const TEST_PATTERN_DEFAULT = false;
 export interface StoreEvent {
   /** Quads whose corners changed. */
   corners: ReadonlySet<QuadId>;
-  /** Frame list or per-frame non-corner settings changed. */
+  /** Frame lists (mapped or choreographed), entries, or their non-corner settings changed. */
   frames: boolean;
   /** Any other config change (global, animation, ...). */
   config: boolean;
@@ -81,6 +88,17 @@ export type Listener = (e: StoreEvent) => void;
 export type DeepReadonly<T> = T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T;
 
 export type FrameSettings = Partial<Pick<FrameConfig, 'title' | 'physicalAspect' | 'debugColor' | 'captionSpacing' | 'captionOffsetX' | 'blend'>>;
+export type ChoreoFrameSettings = Partial<Omit<ChoreoFrameConfig, 'id' | 'corners'>>;
+export type EntrySettings = Partial<Omit<EntryConfig, 'id' | 'frames'>>;
+
+/** A choreographed frame with its entry and positions. */
+export interface ChoreoFrameRef {
+  entry: DeepReadonly<EntryConfig>;
+  frame: DeepReadonly<ChoreoFrameConfig>;
+  /** Positions in the entry list and in the entry's frames. */
+  entryIndex: number;
+  index: number;
+}
 
 interface PointChange {
   index: CornerIndex;
@@ -139,6 +157,8 @@ export class Store {
       ioMessage: null,
       assetMessage: null,
       assetErrors: {},
+      editedEntryId: null,
+      soloFrameId: null,
     };
   }
 
@@ -162,8 +182,43 @@ export class Store {
 
   // ---------- queries ----------
 
+  /**
+   * Quads with handles, outlines and Tab stops, in order, then the wall quad. Randomized: the
+   * mapped frames. Choreographed: the edited entry's frames.
+   */
   allQuadIds(): QuadId[] {
-    return [...this._config.frames.map((f) => f.id), WALL_QUAD_ID];
+    return [...this.handledFrames().map((f) => f.id), WALL_QUAD_ID];
+  }
+
+  /** The frames on the canvas for mapping (see allQuadIds), in draw order. */
+  handledFrames(): readonly DeepReadonly<{ id: string; title: string; corners: Corners; debugColor: string }>[] {
+    if (this._config.showType === 'randomized') return this._config.frames;
+    return this.editedEntry()?.frames ?? [];
+  }
+
+  /** The edited entry (Choreographed mode), if any. */
+  editedEntry(): DeepReadonly<EntryConfig> | null {
+    const id = this._runtime.editedEntryId;
+    return id ? this.findEntry(id) : null;
+  }
+
+  findEntry(id: string): DeepReadonly<EntryConfig> | null {
+    return this._config.choreography.entries.find((e) => e.id === id) ?? null;
+  }
+
+  findChoreoFrame(id: string): ChoreoFrameRef | null {
+    const entries = this._config.choreography.entries;
+    for (let entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+      const entry = entries[entryIndex]!;
+      const index = entry.frames.findIndex((f) => f.id === id);
+      if (index >= 0) return { entry, frame: entry.frames[index]!, entryIndex, index };
+    }
+    return null;
+  }
+
+  /** Every frame id in the show, mapped and choreographed (ids are unique across both). */
+  allFrameIds(): string[] {
+    return [...this._config.frames.map((f) => f.id), ...this._config.choreography.entries.flatMap((e) => e.frames.map((f) => f.id))];
   }
 
   getCorners(quadId: QuadId): DeepReadonly<Corners> | null {
@@ -205,18 +260,21 @@ export class Store {
     return null;
   }
 
-  /** Frames (and the wall, as WALL_QUAD_ID) whose playlist lists this asset, by pool and filepath. */
+  /** Choreographed frames (by id) and the wall (WALL_QUAD_ID) that use this asset, by pool and filepath. */
   framesUsingAsset(uid: string): QuadId[] {
     const found = this.findAsset(uid);
     if (!found) return [];
-    return this.playlistOwners()
-      .filter((o) => o.playlist.some((item) => item.pool === found.pool.path && item.filepath === found.entry.filepath))
+    return this.assetRefs()
+      .filter((o) => o.items.some((item) => item.pool === found.pool.path && item.filepath === found.entry.filepath))
       .map((o) => o.id);
   }
 
-  /** Every playlist: each frame's, then the wall's (WALL_QUAD_ID). */
-  private playlistOwners(): { id: QuadId; playlist: PlaylistItem[] }[] {
-    return [...this._config.frames, { id: WALL_QUAD_ID, playlist: this._config.wallQuad.playlist }];
+  /** Every asset reference: each choreographed frame's asset, then the wallpaper playlist (WALL_QUAD_ID). */
+  private assetRefs(): { id: QuadId; items: PlaylistItem[] }[] {
+    const out: { id: QuadId; items: PlaylistItem[] }[] = [];
+    for (const e of this._config.choreography.entries) for (const f of e.frames) if (f.asset) out.push({ id: f.id, items: [f.asset] });
+    out.push({ id: WALL_QUAD_ID, items: this._config.wallQuad.playlist });
+    return out;
   }
 
   /** Snapshot of one pool, for saving. */
@@ -241,10 +299,12 @@ export class Store {
     this.drag = null;
     this._runtime.selected = null;
     this._runtime.testPattern = {};
+    this._runtime.soloFrameId = null;
+    if (this._runtime.editedEntryId && !this.findEntry(this._runtime.editedEntryId)) this._runtime.editedEntryId = null;
     this._runtime.configDirty = false;
     this._runtime.folderName = folderName;
     this.emit((e) => {
-      for (const id of this.allQuadIds()) e.corners.add(id);
+      for (const id of [...this.allFrameIds(), WALL_QUAD_ID]) e.corners.add(id);
       e.frames = e.config = e.runtime = true;
     });
   }
@@ -279,7 +339,7 @@ export class Store {
 
   /**
    * Live edit of an asset entry. Marks its pool modified. A new filepath clears the asset's
-   * error, and playlist entries pointing at the old filepath follow it (marking the config modified).
+   * error, and frames and playlist entries pointing at the old filepath follow it (marking the config modified).
    */
   updateAsset(uid: string, patch: Partial<AssetEntry>): void {
     for (const m of this._pools) {
@@ -292,8 +352,8 @@ export class Store {
       if (pathChanged) {
         delete this._runtime.assetErrors[uid];
         let followed = false;
-        for (const f of this.playlistOwners()) {
-          for (const item of f.playlist) {
+        for (const ref of this.assetRefs()) {
+          for (const item of ref.items) {
             if (item.pool === m.path && item.filepath === oldPath) {
               item.filepath = a.entry.filepath;
               followed = true;
@@ -326,7 +386,7 @@ export class Store {
 
   /**
    * Remove an asset from its pool (marking it modified). The media file is not touched.
-   * Playlist entries that pointed at it are kept and show as missing.
+   * Frames and playlist entries that pointed at it are kept and show as missing.
    */
   removeAsset(uid: string): void {
     for (const m of this._pools) {
@@ -366,9 +426,9 @@ export class Store {
     this.emit((e) => (e.assets = e.config = e.runtime = true));
   }
 
-  /** Frames (and the wall, as WALL_QUAD_ID) whose playlist lists any asset of this pool. */
+  /** Choreographed frames (by id) and the wall (WALL_QUAD_ID) that use any asset of this pool. */
   framesUsingPool(path: string): QuadId[] {
-    return this.playlistOwners().filter((o) => o.playlist.some((item) => item.pool === path)).map((o) => o.id);
+    return this.assetRefs().filter((o) => o.items.some((item) => item.pool === path)).map((o) => o.id);
   }
 
   setAssetError(uid: string, message: string | null): void {
@@ -530,6 +590,7 @@ export class Store {
     // While setting up with test patterns showing, a new frame shows its pattern too.
     const patterns = this.allQuadIds().some((id) => this.isTestPatternOn(id));
     const f = newFrame(0.5, 0.5, w / h, this._config.frames);
+    f.id = generateFrameId(this.allFrameIds());
     this._config.frames.push(f);
     if (patterns) this._runtime.testPattern[f.id] = true;
     this.markConfigDirty();
@@ -546,9 +607,7 @@ export class Store {
     const i = this.frameIndex(id);
     if (i < 0) return;
     this._config.frames.splice(i, 1);
-    this.playlistKeyMap.delete(id);
-    delete this._runtime.testPattern[id];
-    if (this._runtime.selected?.quadId === id) this._runtime.selected = null;
+    this.forgetQuad(id);
     this.markConfigDirty();
     this.emit((e) => (e.frames = e.runtime = true));
   }
@@ -576,7 +635,154 @@ export class Store {
     this.emit((e) => (e.frames = true));
   }
 
-  // ---------- playlist actions ----------
+  // ---------- choreography actions ----------
+
+  setChoreography(patch: Partial<Omit<ChoreographyConfig, 'entries'>>): void {
+    Object.assign(this._config.choreography, patch);
+    this.configChanged();
+  }
+
+  /** Add an entry at the end of the list. Returns its id. */
+  addEntry(): string {
+    const entries = this._config.choreography.entries;
+    const e = newEntry(entries.map((x) => x.id));
+    entries.push(e);
+    this.playlistChanged();
+    return e.id;
+  }
+
+  /** Copy an entry (and its frames) right below it, with new ids. Returns the copy's id. */
+  duplicateEntry(id: string): string | null {
+    const entries = this._config.choreography.entries;
+    const i = entries.findIndex((e) => e.id === id);
+    if (i < 0) return null;
+    const copy = structuredClone(entries[i]!);
+    copy.id = generateEntryId(entries.map((e) => e.id));
+    copy.name = `${copy.name} copy`;
+    const ids = this.allFrameIds();
+    for (const f of copy.frames) {
+      f.id = generateFrameId(ids);
+      ids.push(f.id);
+    }
+    entries.splice(i + 1, 0, copy);
+    this.markConfigDirty();
+    this.emit((e) => {
+      e.frames = true;
+      for (const f of copy.frames) e.corners.add(f.id);
+    });
+    return copy.id;
+  }
+
+  /** Remove an entry immediately (no confirmation, as for frames). */
+  removeEntry(id: string): void {
+    const entries = this._config.choreography.entries;
+    const i = entries.findIndex((e) => e.id === id);
+    if (i < 0) return;
+    const [removed] = entries.splice(i, 1);
+    for (const f of removed!.frames) this.forgetQuad(f.id);
+    if (this._runtime.editedEntryId === id) this._runtime.editedEntryId = null;
+    this.playlistChanged(true);
+  }
+
+  /** Move an entry to another position in the play order. */
+  moveEntry(id: string, to: number): void {
+    const entries = this._config.choreography.entries;
+    const from = entries.findIndex((e) => e.id === id);
+    if (from < 0 || from === to || to < 0 || to >= entries.length) return;
+    entries.splice(to, 0, ...entries.splice(from, 1));
+    this.playlistChanged();
+  }
+
+  /** Change an entry's own fields (not its frames). */
+  updateEntry(id: string, patch: EntrySettings): void {
+    const e = this._config.choreography.entries.find((x) => x.id === id);
+    if (!e) return;
+    Object.assign(e, patch);
+    this.playlistChanged();
+  }
+
+  /** Mark the most recently opened entry section: its frames get handles and Tab stops. */
+  setEditedEntry(id: string | null): void {
+    if (this._runtime.editedEntryId === id) return;
+    this._runtime.editedEntryId = id;
+    this.dropHiddenSelection();
+    this.emit((e) => (e.runtime = e.frames = true));
+  }
+
+  /** Add a frame to an entry with the "Add new frame" geometry. Returns its id. */
+  addChoreoFrame(entryId: string): string | null {
+    const e = this.mutableEntry(entryId);
+    if (!e) return null;
+    const { w, h } = this._runtime.viewport;
+    // While setting up with test patterns showing, a new frame shows its pattern too.
+    const patterns = this.allQuadIds().some((id) => this.isTestPatternOn(id));
+    const f = newChoreoFrame(0.5, 0.5, w / h, this.allFrameIds(), e.frames.map((x) => x.debugColor));
+    e.frames.push(f);
+    if (patterns) this._runtime.testPattern[f.id] = true;
+    this.markConfigDirty();
+    this.emit((ev) => {
+      ev.frames = true;
+      ev.runtime = patterns;
+      ev.corners.add(f.id);
+    });
+    return f.id;
+  }
+
+  /** Copy a choreographed frame right below it, with a new id and colour. Returns the copy's id. */
+  duplicateChoreoFrame(id: string): string | null {
+    const found = this.mutableChoreoFrame(id);
+    if (!found) return null;
+    const { entry, frame } = found;
+    const copy: ChoreoFrameConfig = {
+      ...structuredClone(frame),
+      id: generateFrameId(this.allFrameIds()),
+      debugColor: nextFrameColor(entry.frames.map((x) => x.debugColor)),
+    };
+    entry.frames.splice(entry.frames.indexOf(frame) + 1, 0, copy);
+    this.markConfigDirty();
+    this.emit((e) => {
+      e.frames = true;
+      e.corners.add(copy.id);
+    });
+    return copy.id;
+  }
+
+  /** Remove a choreographed frame immediately. Not undoable; only the config dirty flag records it. */
+  removeChoreoFrame(id: string): void {
+    const found = this.mutableChoreoFrame(id);
+    if (!found) return;
+    found.entry.frames.splice(found.entry.frames.indexOf(found.frame), 1);
+    this.forgetQuad(id);
+    this.playlistChanged(true);
+  }
+
+  /** Move a choreographed frame within its entry. Later frames draw on top. Not undoable. */
+  moveChoreoFrame(id: string, to: number): void {
+    const found = this.mutableChoreoFrame(id);
+    if (!found) return;
+    const list = found.entry.frames;
+    const from = list.indexOf(found.frame);
+    if (from === to || to < 0 || to >= list.length) return;
+    list.splice(to, 0, ...list.splice(from, 1));
+    this.playlistChanged();
+  }
+
+  updateChoreoFrame(id: string, patch: ChoreoFrameSettings): void {
+    const found = this.mutableChoreoFrame(id);
+    if (!found) return;
+    Object.assign(found.frame, patch);
+    // Content is arriving: the test pattern would hide it.
+    if (patch.asset) this.hideTestPatterns([id]);
+    this.playlistChanged();
+  }
+
+  setSolo(frameId: string | null): void {
+    if (this._runtime.soloFrameId === frameId) return;
+    this._runtime.soloFrameId = frameId;
+    this.emit((e) => (e.runtime = true));
+  }
+
+  // ---------- wallpaper playlist actions ----------
 
   /** Insert an asset into a frame's playlist (at the end by default). */
   addToPlaylist(frameId: QuadId, item: PlaylistItem, index?: number): void {
@@ -616,7 +822,9 @@ export class Store {
   setShowType(type: ShowType): void {
     if (this._config.showType === type) return;
     this._config.showType = type;
+    this.dropHiddenSelection();
     this.configChanged(true);
+    this.emit((e) => (e.runtime = true));
   }
 
   setWallColor(color: string): void {
@@ -658,7 +866,7 @@ export class Store {
     this.emit((e) => (e.runtime = true));
   }
 
-  /** Cycle selection through all control points (frames in order, then the wall quad). */
+  /** Cycle selection through the handled frames' control points in order, then the wall quad's. */
   cycleSelection(dir: 1 | -1): void {
     const refs: PointRef[] = [];
     for (const id of this.allQuadIds()) {
@@ -722,15 +930,40 @@ export class Store {
 
   // ---------- internals ----------
 
+  /** Corners of the wall, a mapped frame or a choreographed frame. */
   private mutableCorners(quadId: QuadId): Corners | null {
     if (quadId === WALL_QUAD_ID) return this._config.wallQuad.corners;
-    return this._config.frames.find((f) => f.id === quadId)?.corners ?? null;
+    return this._config.frames.find((f) => f.id === quadId)?.corners ?? this.mutableChoreoFrame(quadId)?.frame.corners ?? null;
   }
 
-  /** The playlist owner for an id: a frame, or the wall (WALL_QUAD_ID). */
+  private mutableEntry(id: string): EntryConfig | null {
+    return this._config.choreography.entries.find((e) => e.id === id) ?? null;
+  }
+
+  private mutableChoreoFrame(id: string): { entry: EntryConfig; frame: ChoreoFrameConfig } | null {
+    for (const entry of this._config.choreography.entries) {
+      const frame = entry.frames.find((f) => f.id === id);
+      if (frame) return { entry, frame };
+    }
+    return null;
+  }
+
+  /** The playlist owner for an id: only the wall (WALL_QUAD_ID) has a playlist. */
   private mutableFrame(id: QuadId): { playlist: PlaylistItem[] } | null {
-    if (id === WALL_QUAD_ID) return this._config.wallQuad;
-    return this._config.frames.find((f) => f.id === id) ?? null;
+    return id === WALL_QUAD_ID ? this._config.wallQuad : null;
+  }
+
+  /** A removed quad: forget its runtime state. */
+  private forgetQuad(id: string): void {
+    delete this._runtime.testPattern[id];
+    if (this._runtime.selected?.quadId === id) this._runtime.selected = null;
+    if (this._runtime.soloFrameId === id) this._runtime.soloFrameId = null;
+  }
+
+  /** A selected point whose quad no longer has handles is deselected. */
+  private dropHiddenSelection(): void {
+    const sel = this._runtime.selected;
+    if (sel && !this.allQuadIds().includes(sel.quadId)) this._runtime.selected = null;
   }
 
   /** Playlist keys for a frame, created on first use (or if they fell out of step with the playlist). */
@@ -745,9 +978,12 @@ export class Store {
     return keys;
   }
 
-  private playlistChanged(): void {
+  private playlistChanged(runtime = false): void {
     this.markConfigDirty();
-    this.emit((e) => (e.frames = true));
+    this.emit((e) => {
+      e.frames = true;
+      if (runtime) e.runtime = true;
+    });
   }
 
   private pushEdit(edit: MappingEdit): void {

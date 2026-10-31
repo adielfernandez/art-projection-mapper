@@ -40,7 +40,8 @@ export class DebugOverlay {
 
     const cfg = this.store.config;
     this.drawQuad(WALL_QUAD_ID, cfg.wallQuad.corners, cfg.wallQuad.debugColor, 'W');
-    cfg.frames.forEach((f, i) => this.drawQuad(f.id, f.corners, f.debugColor, String(i + 1)));
+    // The mapped frames (Randomized) or the edited entry's frames (Choreographed), numbered within it.
+    this.store.handledFrames().forEach((f, i) => this.drawQuad(f.id, f.corners, f.debugColor, String(i + 1)));
     this.drawHud();
   }
 
@@ -144,7 +145,7 @@ export class DebugOverlay {
       if (c) {
         const name = sel.quadId === WALL_QUAD_ID
           ? 'Wall'
-          : `Frame ${this.store.config.frames.findIndex((f) => f.id === sel.quadId) + 1}`;
+          : `Frame ${this.store.handledFrames().findIndex((f) => f.id === sel.quadId) + 1}`;
         text = `${name} ${CORNER_NAMES[sel.index]}   x ${(c[0] * w).toFixed(1)}   y ${(c[1] * h).toFixed(1)} px   ·   Esc deselects`;
       }
     }

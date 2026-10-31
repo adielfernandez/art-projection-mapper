@@ -168,3 +168,16 @@ Text variants in `show/`, covering every case in brief §5.5:
 | Empty strings `""` (no caption) | A09 |
 | No text keys at all (no caption) | A10, V05 |
 | Whitespace-only title `"   "` + artist | A13 |
+
+## 8. Choreographed mode (by eye)
+
+Switch **Show type** to **Choreographed** in any of the FPO folders, then build entries in the **Choreography** section. The logic (timing, crossfades, skipping, live edits, migration) is covered by `npm test`; these need eyes on the projector.
+
+- [ ] **Noise dissolve on a frame.** Give a frame a 3 s **Fade in** with **Noise Dissolve**. It appears through soft blotches, with the wallpaper (or earlier frames) visible between them, not black. **Dissolve softness** and **Noise Scale** (Animation) change the blotches live. **Simple Fade** fades the whole frame up instead.
+- [ ] **Alpha WebM.** Put a WebM with an alpha channel (VP9) on a frame set to **Alpha**, over the wallpaper. Its transparent parts show the wallpaper, with no dark fringe. Do the same with a PNG with a transparent background. Switch the frame to **Normal**: the transparent parts now cover (black). Checked by pixel readback in Chrome 155 on Windows, headless with software graphics: both kept their alpha. Confirm on the show machine's GPU.
+- [ ] **Crossfade between two entries.** Two entries with different frames and a 3 s fade time on the second: the first fades out while the second fades in, over the wallpaper, with no flash of black and no hitch. A single entry crossfades into itself when it ends.
+- [ ] **Pan / zoom pacing.** One image frame marked **Zoom** with a 5 s **Duration**, another with a 40 s one (or no Duration, in an entry with a 40 s **Hold time**). Both zoom from **Zoom start** to an exact fit, finishing as the frame finishes fading out: the short one fast, the long one slowly. A wide image marked **Pan** glides edge to edge over the frame's whole time. Videos never move.
+- [ ] **Mapping.** Only the open entry's frames show handles; opening another entry moves the handles to its frames. Dragging, nudging, right-click rotate and undo work on them. **Solo** hides the entry's other frames.
+- [ ] **Transport.** **Now playing** and the progress bar track the entry on screen; **Next** / **N**, **Previous** and **Jump to entry…** crossfade at once; **Preview** repeats an entry until **Resume playlist**.
+- [ ] **Pause Show** freezes the entry clock and the videos; resuming continues where it stopped.
+- [ ] **Older shows.** Load `baphomet-show/` (saved in Manual mode): it opens as Choreographed with one 60 s entry, "Converted from Manual", and the Config section lists any dropped playlist items.

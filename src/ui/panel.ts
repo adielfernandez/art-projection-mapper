@@ -7,6 +7,7 @@ import { attachHelpTooltips } from './helpTooltip';
 import { animationSection } from './sections/animationSection';
 import { appControls, showControls } from './sections/appControls';
 import { assetsSection } from './sections/assetsSection';
+import { choreographySection } from './sections/choreographySection';
 import { configSection } from './sections/configSection';
 import type { PanelContext, PlaybackInfo } from './sections/context';
 import { mappingSection } from './sections/mappingSection';
@@ -51,6 +52,7 @@ export class Panel {
       h('div', { class: 'panel-body' }, [
         configSection(ctx),
         mappingSection(ctx),
+        choreographySection(ctx),
         assetsSection(ctx),
         animationSection(ctx),
       ]),

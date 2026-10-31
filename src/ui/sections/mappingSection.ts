@@ -1,8 +1,15 @@
 import { WALL_QUAD_ID, type QuadId } from '../../state/schema';
 import { CORNER_NAMES, type CornerIndex } from '../../state/store';
 import { Binder, button, checkboxRow, colorCheckRow, colorRow, h, numberInput, numberRow, section, sliderRow, textRow, withHelp } from '../controls';
+import { frameLabel } from '../labels';
 import type { PanelContext } from './context';
 import { playlistBlock } from './playlistBlock';
+
+/** Hover help shared by the mapped and choreographed frame editors. */
+export const ADDITIVE_HELP =
+  "Adds this frame's light on top of what's behind it instead of covering it: black becomes see-through and bright areas glow over it. " +
+  'Use it to fake transparency for content shot on black (fire, smoke, sparks). To layer, overlap this frame with another ' +
+  'and move it lower in the list (↓) so it draws on top.';
 
 /** Caption X offset slider spans ± this many frame widths (the number field accepts any value). */
 const CAPTION_X_RANGE = 0.5;
@@ -34,7 +41,7 @@ export function mappingSection(ctx: PanelContext): HTMLElement {
     checkboxRow(binder, 'Test pattern', () => store.isTestPatternOn(WALL_QUAD_ID), (v) => store.setTestPattern(WALL_QUAD_ID, v)),
     pointRows(ctx, binder, WALL_QUAD_ID),
     convexWarning(ctx, binder, WALL_QUAD_ID),
-    playlistBlock(ctx, binder, WALL_QUAD_ID),
+    playlistBlock(ctx, binder),
   ], { class: 'quad' });
 
   // ----- Frames (rebuilt when the frame list changes) -----
@@ -60,10 +67,18 @@ export function mappingSection(ctx: PanelContext): HTMLElement {
     const id = store.addFrame();
     ctx.openState.set(`frame:${id}`, true);
   }, 'wide');
+  // The mapped frames belong to Randomized mode; a choreographed show maps its frames per entry.
+  const choreoNote = h('div', { class: 'muted', text: 'Frames are used by Randomized mode. In a Choreographed show, each entry has its own frames (Choreography section).' });
+  binder.add(() => {
+    const randomized = store.config.showType === 'randomized';
+    framesEl.hidden = add.hidden = !randomized;
+    choreoNote.hidden = randomized;
+  });
 
   return section(ctx.openState, 'mapping', 'Mapping', [
     section(ctx.openState, 'global', 'Global', globalBody, { defaultOpen: true }),
     wall,
+    choreoNote,
     framesEl,
     add,
   ], { defaultOpen: true });
@@ -91,9 +106,7 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
     checkboxRow(b, 'Test pattern', () => store.isTestPatternOn(id), (v) => store.setTestPattern(id, v)),
     withHelp(
       checkboxRow(b, 'Additive blend', () => frame().blend === 'add', (v) => store.updateFrame(id, { blend: v ? 'add' : 'normal' })),
-      "Adds this frame's light on top of what's behind it instead of covering it: black becomes see-through and bright areas glow over it. " +
-        'Use it to fake transparency for content shot on black (fire, smoke, sparks). To layer, overlap this frame with another ' +
-        'and move it lower in the list (↓) so it draws on top.',
+      ADDITIVE_HELP,
     ),
     pointRows(ctx, b, id),
     rotateButton(ctx, id),
@@ -116,27 +129,21 @@ function frameSection(ctx: PanelContext, b: Binder, id: QuadId, index: number): 
       "Gap between the frame's bottom edge and the captions, in frame widths.",
     ),
     convexWarning(ctx, b, id),
-    playlistBlock(ctx, b, id),
   ], { class: 'quad', headerExtras: [up, down, remove] });
 }
 
-/** Turns the frame 90° clockwise about its center (content and captions turn with it). */
-function rotateButton(ctx: PanelContext, id: QuadId): HTMLElement {
+/** Turns the frame 90° clockwise about its center (content, and captions if any, turn with it). */
+export function rotateButton(ctx: PanelContext, id: QuadId, captions = true): HTMLElement {
+  const turns = captions ? 'its picture and captions turn' : 'its picture turns';
   const rotate = withHelp(
     button('↻ Rotate 90° clockwise', () => ctx.store.rotateQuad(id), 'wide'),
-    "Turns this frame 90° clockwise around its center, so its picture and captions turn with it. If that pushes a corner off screen, the frame is slid back on screen. Ctrl+Z undoes it.",
+    `Turns this frame 90° clockwise around its center, so ${turns} with it. If that pushes a corner off screen, the frame is slid back on screen. Right-clicking inside the frame does the same. Ctrl+Z undoes it.`,
   );
   return h('div', { class: 'rotate-row' }, [rotate]);
 }
 
-/** "Frame 3: The Nightmare" (just "Frame 3" when the title is blank). index is 0-based. */
-export function frameLabel(index: number, title: string): string {
-  const t = title.trim();
-  return t ? `Frame ${index + 1}: ${t}` : `Frame ${index + 1}`;
-}
-
 /** Section title: color swatch and name, both kept current. */
-function quadTitle(text: () => string, color: () => string, b: Binder): HTMLElement {
+export function quadTitle(text: () => string, color: () => string, b: Binder): HTMLElement {
   const swatch = h('span', { class: 'swatch' });
   const name = h('span', { class: 'quad-name' });
   b.add(() => {
@@ -147,7 +154,7 @@ function quadTitle(text: () => string, color: () => string, b: Binder): HTMLElem
 }
 
 /** X/Y inputs in device pixels for each corner. Clicking the corner name selects that point. */
-function pointRows(ctx: PanelContext, b: Binder, quadId: QuadId): HTMLElement {
+export function pointRows(ctx: PanelContext, b: Binder, quadId: QuadId): HTMLElement {
   const { store } = ctx;
   const rows = ([0, 1, 2, 3] as CornerIndex[]).map((index) => {
     const ref = { quadId, index };
@@ -187,7 +194,7 @@ function pointRows(ctx: PanelContext, b: Binder, quadId: QuadId): HTMLElement {
   return h('div', { class: 'points' }, [h('div', { class: 'subhead', text: 'Control points (device px)' }), ...rows]);
 }
 
-function convexWarning(ctx: PanelContext, b: Binder, quadId: QuadId): HTMLElement {
+export function convexWarning(ctx: PanelContext, b: Binder, quadId: QuadId): HTMLElement {
   const el = h('div', { class: 'warning', text: '⚠ Quad is not convex. Showing the last valid mapping.' });
   b.add(() => (el.hidden = ctx.store.isQuadValid(quadId)));
   return el;

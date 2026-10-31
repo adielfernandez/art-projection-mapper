@@ -777,3 +777,70 @@
   opacity: 0;
   transition: opacity 0.4s;
 }
+
+/* ----- Choreography ----- */
+
+.transport {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.now-playing {
+  font-weight: 600;
+}
+
+/* Progress through the entry on screen (empty while its length isn't known). */
+.progress {
+  height: 0.4rem;
+  border-radius: 0.2rem;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+}
+
+/* The entry on screen. */
+details.entry.playing > summary {
+  box-shadow: inset 0.2rem 0 0 #30d158;
+  background: rgba(48, 209, 88, 0.12);
+}
+
+.choreo-frames {
+  margin-top: 0.5rem;
+}
+
+.asset-slot-row {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.asset-slot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.35rem;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.asset-slot:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.asset-slot .asset-name {
+  flex: 1;
+  min-width: 0;
+}

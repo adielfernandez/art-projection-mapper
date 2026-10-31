@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coverSpan, easedProgress, planMotion, sampleView } from './motion';
+import { choreoMotionSpan, coverSpan, easedProgress, planChoreoMotion, planMotion, sampleView } from './motion';
 
 const cfg = { cycleDuration: 12, zoomStart: 1.15, panSpeed: 0.03, panAspectThreshold: 1.15, maxHoldDuration: 30 };
 const FRAME = 0.6571;
@@ -122,5 +122,35 @@ describe('sampleView', () => {
     for (const t of [2, 14]) {
       expect(sampleView(plan, 1, FRAME, t + 0.05, total).sx).toBeGreaterThan(sampleView(plan, 1, FRAME, t, total).sx);
     }
+  });
+});
+
+describe('choreographed frame motion', () => {
+  const img = (fields: { zoom?: boolean; pan?: boolean; assetAspect?: number }) => ({ kind: 'image' as const, zoom: false, pan: false, assetAspect: 1, frameAspect: FRAME, ...fields });
+
+  it('videos never move; images follow the Randomized pan / zoom rules', () => {
+    expect(planChoreoMotion({ kind: 'video', zoom: true, pan: true, assetAspect: 1.78, frameAspect: FRAME }, cfg)).toBeNull();
+    expect(planChoreoMotion(img({}), cfg)).toBeNull();
+    expect(planChoreoMotion(img({ zoom: true }), cfg)?.kind).toBe('zoom');
+    expect(planChoreoMotion(img({ pan: true, assetAspect: 1.6 }), cfg)?.kind).toBe('pan');
+    // Within the threshold, pan falls back to zoom (if on) or no motion.
+    expect(planChoreoMotion(img({ pan: true, zoom: true, assetAspect: FRAME * 1.05 }), cfg)?.kind).toBe('zoom');
+    expect(planChoreoMotion(img({ pan: true, assetAspect: FRAME * 1.05 }), cfg)).toBeNull();
+  });
+
+  it("the motion window is the frame's span: it finishes exactly at the frame's end, whatever its length", () => {
+    const plan = planChoreoMotion(img({ pan: true, assetAspect: 1.6 }), cfg, () => 0.2)!;
+    if (plan.kind !== 'pan') throw new Error('expected pan');
+    for (const span of [3, 40]) {
+      expect(sampleView(plan, 1.6, FRAME, 0, span).cx).toBeCloseTo(plan.from, 12);
+      expect(sampleView(plan, 1.6, FRAME, span / 2, span).cx).toBeCloseTo((plan.from + plan.to) / 2, 6);
+      expect(sampleView(plan, 1.6, FRAME, span, span).cx).toBeCloseTo(plan.to, 12);
+    }
+  });
+
+  it("an open-ended image spans holdTime − delay; a known end is used as is", () => {
+    expect(choreoMotionSpan(null, 40, 4)).toBe(36);
+    expect(choreoMotionSpan(12, 40, 4)).toBe(12);
+    expect(choreoMotionSpan(null, null, 0)).toBeNull();
   });
 });

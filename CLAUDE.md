@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Project spec: see `ProjectBrief.md`. Work milestone by milestone (brief §6) and stop at the end of each for the user to verify on the physical projector.
+Project spec: see `ProjectBrief.md`, and `Choreographed-Mode-Porting.md` for Choreographed mode. Work milestone by milestone (brief §6) and stop at the end of each for the user to verify on the physical projector.
 
 ## Conventions
 
@@ -22,7 +22,8 @@ Project spec: see `ProjectBrief.md`. Work milestone by milestone (brief §6) and
     render/     renderer.ts, quadCamera.ts, frameRenderer.ts, wallRenderer.ts,
                 testPattern.ts, transitionMaterial.ts, debugOverlay.ts
     content/    selection.ts, shuffleBag.ts, shuffleBag.test.ts, scheduler.ts,
-                mediaLoader.ts, motion.ts
+                mediaLoader.ts, motion.ts, playlist.ts,
+                choreographyEngine.ts, choreoPlayback.ts, validation.ts
     captions/   captionLayout.ts, captionRenderer.ts
     ui/         panel.ts, hotkeys.ts, sections/*.ts, panel.css
   ```

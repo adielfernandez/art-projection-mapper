@@ -20,6 +20,8 @@ const ARROWS: Record<string, [number, number]> = {
 
 export interface HotkeyHandlers {
   togglePanel?: () => void;
+  /** Choreographed mode: crossfade to the next entry. */
+  nextEntry?: () => void;
 }
 
 export function attachHotkeys(store: Store, handlers: HotkeyHandlers = {}): void {
@@ -42,6 +44,10 @@ export function attachHotkeys(store: Store, handlers: HotkeyHandlers = {}): void
     }
     if (key === 'x' || key === 'X') {
       handlers.togglePanel?.();
+      return;
+    }
+    if ((key === 'n' || key === 'N') && store.config.showType === 'choreographed') {
+      handlers.nextEntry?.();
       return;
     }
     if (key === ' ') {

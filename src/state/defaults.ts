@@ -1,9 +1,11 @@
-import { CONFIG_SCHEMA_VERSION, type Config, type Corners, type FrameConfig } from './schema';
+import { CONFIG_SCHEMA_VERSION, type ChoreoFrameConfig, type Config, type Corners, type EntryConfig, type FrameConfig } from './schema';
 
 export const DEFAULT_PHYSICAL_ASPECT = 0.6571; // 23" × 35"
 export const DEFAULT_FRAME_TITLE = 'Untitled';
 /** Default frame height as a fraction of canvas height. */
 export const DEFAULT_FRAME_HEIGHT = 0.5;
+export const DEFAULT_ENTRY_NAME = 'Entry';
+export const DEFAULT_CROSSFADE = 2;
 
 export const FRAME_COLORS = [
   '#FF453A', '#30D158', '#FFD60A', '#BF5AF2',
@@ -17,12 +19,21 @@ export function nextFrameColor(used: readonly string[]): string {
   return free ?? FRAME_COLORS[used.length % FRAME_COLORS.length]!;
 }
 
-export function generateFrameId(existing: readonly string[]): string {
+function generateId(prefix: string, existing: readonly string[]): string {
   const taken = new Set(existing);
   for (;;) {
-    const id = 'f_' + Math.random().toString(36).slice(2, 7).padEnd(5, '0');
+    const id = prefix + Math.random().toString(36).slice(2, 7).padEnd(5, '0');
     if (!taken.has(id)) return id;
   }
+}
+
+/** A frame id not in `existing` (pass every frame id in the show, mapped and choreographed). */
+export function generateFrameId(existing: readonly string[]): string {
+  return generateId('f_', existing);
+}
+
+export function generateEntryId(existing: readonly string[]): string {
+  return generateId('e_', existing);
 }
 
 /** Axis-aligned corners for a frame of the given physical aspect, centered at (cx, cy). */
@@ -55,8 +66,41 @@ export function newFrame(
     debugColor: nextFrameColor(existing.map((f) => f.debugColor)),
     captionSpacing: 0.05,
     captionOffsetX: 0,
-    playlist: [],
     blend: 'normal',
+  };
+}
+
+/** A choreography entry with no frames. */
+export function newEntry(existingIds: readonly string[]): EntryConfig {
+  return { id: generateEntryId(existingIds), name: DEFAULT_ENTRY_NAME, enabled: true, holdTime: null, fadeTime: null, frames: [] };
+}
+
+/**
+ * A choreographed frame with the "Add new frame" geometry, centered at (cx, cy).
+ * `allFrameIds`: every frame id in the show; `entryColors`: colors used in its entry.
+ */
+export function newChoreoFrame(
+  cx: number,
+  cy: number,
+  canvasAspect: number,
+  allFrameIds: readonly string[],
+  entryColors: readonly string[],
+): ChoreoFrameConfig {
+  return {
+    id: generateFrameId(allFrameIds),
+    title: DEFAULT_FRAME_TITLE,
+    corners: frameCorners(cx, cy, DEFAULT_PHYSICAL_ASPECT, canvasAspect),
+    physicalAspect: DEFAULT_PHYSICAL_ASPECT,
+    debugColor: nextFrameColor(entryColors),
+    asset: null,
+    blend: 'normal',
+    delay: 0,
+    duration: null,
+    loop: false,
+    fadeIn: 0.5,
+    fadeInStyle: 'noise',
+    fadeOut: 0.5,
+    opacity: 1,
   };
 }
 
@@ -80,6 +124,7 @@ export function defaultConfig(canvasAspect: number): Config {
       playlist: [],
     },
     frames,
+    choreography: { crossfade: DEFAULT_CROSSFADE, entries: [] },
     animation: {
       transitionInStyle: 'noise',
       cycleDuration: 12,

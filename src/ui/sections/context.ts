@@ -1,3 +1,4 @@
+import type { ChoreoPlayback } from '../../content/choreoPlayback';
 import type { ConfirmFn, ProjectController } from '../../io/projectController';
 import type { Store } from '../../state/store';
 import type { Binder } from '../controls';
@@ -5,8 +6,10 @@ import type { Thumbnails } from '../thumbnails';
 
 /** What the panel reads from playback. */
 export interface PlaybackInfo {
-  /** Manual show: key of the playlist entry on screen in a frame, or null. */
+  /** The wall: key of the wallpaper playlist entry on screen, or null. */
   playingKey(frameId: string): number | null;
+  /** Choreographed mode: the engine (transport) and frame media. */
+  readonly choreo: ChoreoPlayback;
 }
 
 export interface PanelContext {

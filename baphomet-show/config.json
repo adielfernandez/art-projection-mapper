@@ -241,34 +241,34 @@
       "title": "Untitled",
       "corners": [
         [
-          0.6885462802670452,
-          0.12830856056860318
+          0.7775799014644046,
+          0.13431455741017131
         ],
         [
-          0.6993490221879181,
-          0.9281870983989351
+          0.7967586890206018,
+          0.912571446125568
         ],
         [
-          0.23197562283447407,
-          0.926226390400844
+          0.10323356280110099,
+          0.9196198571097404
         ],
         [
-          0.17361685305592298,
-          0.128578140311556
+          0.05480190273155336,
+          0.13638593895492596
         ]
       ],
-      "physicalAspect": 1,
+      "physicalAspect": 0.5625,
       "debugColor": "#FF453A",
       "captionSpacing": 0.019,
       "captionOffsetX": 0.006,
       "playlist": [
         {
           "pool": "baphomet.json",
-          "filepath": "media/baphomet-sigil.mp4"
+          "filepath": "media/as-above-so-below.mp4"
         },
         {
           "pool": "baphomet.json",
-          "filepath": "media/baphomet-sigil.mp4"
+          "filepath": "media/baphomet-9x16.mp4"
         }
       ],
       "blend": "add"

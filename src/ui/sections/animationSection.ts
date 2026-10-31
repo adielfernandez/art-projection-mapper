@@ -76,13 +76,22 @@ export function animationSection(ctx: PanelContext): HTMLElement {
   );
   const softness = anim('dissolveSoftness', 'Dissolve softness', { min: 0.01, step: 0.01, decimals: 2, sliderMin: 0.01, sliderMax: 4 });
   const noiseScale = anim('dissolveNoiseScale', 'Noise Scale', { min: 0.05, step: 0.05, decimals: 2, sliderMin: 0.25, sliderMax: 8 });
+  // Choreographed frames each pick their own fade-in style, so the noise settings always apply there.
+  const choreoNote = h('div', {
+    class: 'muted',
+    text: 'Choreographed show: only Dissolve softness, Noise Scale, Zoom start and Pan aspect threshold apply ' +
+      "(each frame sets its own timing and fade-in style; its pan or zoom spans the frame's whole time). The rest are for Randomized mode.",
+  });
   binder.add(() => {
-    const noise = store.config.animation.transitionInStyle === 'noise';
+    const choreographed = store.config.showType === 'choreographed';
+    const noise = choreographed || store.config.animation.transitionInStyle === 'noise';
     softness.hidden = !noise;
     noiseScale.hidden = !noise;
+    choreoNote.hidden = !choreographed;
   });
 
   return section(ctx.openState, 'animation', 'Animation', [
+    choreoNote,
     h('div', { class: 'subhead', text: 'Transition-In Style' }),
     style,
     softness,

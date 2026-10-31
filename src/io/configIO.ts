@@ -1,9 +1,11 @@
-import { defaultConfig, generateFrameId, newFrame } from '../state/defaults';
+import { defaultConfig, generateEntryId, generateFrameId, newChoreoFrame, newEntry, newFrame } from '../state/defaults';
 import { migrateConfigJson } from '../state/migrate';
 import {
   CONFIG_SCHEMA_VERSION,
+  type ChoreoFrameConfig,
   type Config,
   type Corners,
+  type EntryConfig,
   type FrameConfig,
   type NormPoint,
   type PlaylistItem,
@@ -11,6 +13,7 @@ import {
   TRANSITION_IN_STYLES,
   type TransitionInStyle,
   BLEND_MODES,
+  FRAME_BLEND_MODES,
   type BlendMode,
   type ShowType,
 } from '../state/schema';
@@ -36,9 +39,10 @@ const HEX = /^#[0-9a-f]{6}$/i;
  */
 export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
   if (!isObj(raw)) throw new Error('config.json must contain a JSON object.');
-  const data = migrateConfigJson(raw);
+  const migrated = migrateConfigJson(raw);
+  const data = migrated.data;
   const d = defaultConfig(canvasAspect);
-  const warnings: string[] = [];
+  const warnings: string[] = [...migrated.warnings];
 
   const num = (o: Obj, key: string, def: number, path: string, opts: { min?: number; positive?: boolean } = {}): number => {
     const v = o[key];
@@ -78,6 +82,49 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     }
     return (v as number[][]).map((p) => [p[0]!, p[1]!] as NormPoint) as Corners;
   };
+  /** One of `allowed`, or `def` with a warning. */
+  const oneOf = <T extends string>(o: Obj, key: string, allowed: readonly T[], def: T, path: string): T => {
+    const v = o[key];
+    if (v === undefined) return def;
+    if (allowed.includes(v as T)) return v as T;
+    warnings.push(`${path}.${key} must be ${allowed.map((t) => `"${t}"`).join(' or ')}; using "${def}".`);
+    return def;
+  };
+  const str = (o: Obj, key: string, def: string, path: string): string => {
+    const v = o[key];
+    if (typeof v === 'string') return v;
+    if (v !== undefined) warnings.push(`${path}.${key} must be a string; using "${def}".`);
+    return def;
+  };
+  const bool = (o: Obj, key: string, def: boolean, path: string): boolean => {
+    const v = o[key];
+    if (typeof v === 'boolean') return v;
+    if (v !== undefined) warnings.push(`${path}.${key} must be true or false; using ${def}.`);
+    return def;
+  };
+  /** Seconds, or null (unset). Missing: `def`. */
+  const nullableNum = (o: Obj, key: string, def: number | null, path: string, opts: { positive?: boolean } = {}): number | null => {
+    const v = o[key];
+    if (v === undefined) return def;
+    if (v === null) return null;
+    if (!isNum(v) || v < 0 || (opts.positive && v <= 0)) {
+      warnings.push(`${path}.${key} is invalid; using ${def ?? 'unset'}.`);
+      return def;
+    }
+    return v;
+  };
+  /** Every frame id so far, mapped and choreographed: ids are unique across the show. */
+  const frameIds = new Set<string>();
+  const frameId = (v: unknown, path: string): string => {
+    if (typeof v === 'string' && v !== '' && !frameIds.has(v)) {
+      frameIds.add(v);
+      return v;
+    }
+    const id = generateFrameId([...frameIds]);
+    frameIds.add(id);
+    warnings.push(`${path}.id missing or duplicate; assigned ${id}.`);
+    return id;
+  };
 
   // assetPools
   let assetPools = d.assetPools;
@@ -116,7 +163,7 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
     },
   };
 
-  /** A frame's or the wall's playlist: an array of { pool, filepath }; bad entries are skipped. */
+  /** The wall's playlist: an array of { pool, filepath }; bad entries are skipped. */
   const playlistOf = (raw: unknown, path: string): PlaylistItem[] => {
     const playlist: PlaylistItem[] = [];
     if (raw === undefined) return playlist;
@@ -156,45 +203,96 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
           return;
         }
         const fallback = newFrame(0.5, 0.5, canvasAspect, frames);
-        let id = rawFrame.id;
-        if (typeof id !== 'string' || id === '' || frames.some((f) => f.id === id)) {
-          id = generateFrameId(frames.map((f) => f.id));
-          warnings.push(`${path}.id missing or duplicate; assigned ${id}.`);
-        }
-        const playlist = playlistOf(rawFrame.playlist, path);
-        let blend: BlendMode = fallback.blend;
-        if (rawFrame.blend !== undefined) {
-          if (BLEND_MODES.includes(rawFrame.blend as BlendMode)) blend = rawFrame.blend as BlendMode;
-          else warnings.push(`${path}.blend must be ${BLEND_MODES.map((t) => `"${t}"`).join(' or ')}; using "${fallback.blend}".`);
-        }
-        let title = fallback.title;
-        if (typeof rawFrame.title === 'string') title = rawFrame.title;
-        else if (rawFrame.title !== undefined) warnings.push(`${path}.title must be a string; using "${fallback.title}".`);
         frames.push({
-          id: id as string,
-          title,
+          id: frameId(rawFrame.id, path),
+          title: str(rawFrame, 'title', fallback.title, path),
           corners: corners(rawFrame.corners, fallback.corners, `${path}.corners`),
           physicalAspect: num(rawFrame, 'physicalAspect', fallback.physicalAspect, path, { positive: true }),
           debugColor: color(rawFrame, 'debugColor', fallback.debugColor, path),
           captionSpacing: num(rawFrame, 'captionSpacing', fallback.captionSpacing, path),
           captionOffsetX: num(rawFrame, 'captionOffsetX', fallback.captionOffsetX, path),
-          playlist,
-          blend,
+          // Alpha is for choreographed frames only.
+          blend: oneOf<BlendMode>(rawFrame, 'blend', FRAME_BLEND_MODES, fallback.blend, path),
         });
       });
     }
   }
 
+  // The default frames (no frames key) count too, so choreographed ids never collide with them.
+  if (data.frames === undefined) for (const fr of frames) frameIds.add(fr.id);
+
+  // choreography
+  const choreoFrame = (raw: Obj, path: string, entryColors: string[]): ChoreoFrameConfig => {
+    const fallback = newChoreoFrame(0.5, 0.5, canvasAspect, [...frameIds], entryColors);
+    let asset: PlaylistItem | null = null;
+    if (isObj(raw.asset) && typeof raw.asset.pool === 'string' && typeof raw.asset.filepath === 'string') {
+      asset = { pool: raw.asset.pool, filepath: raw.asset.filepath };
+    } else if (raw.asset !== undefined && raw.asset !== null) {
+      warnings.push(`${path}.asset must be { "pool": string, "filepath": string } or null; using none.`);
+    }
+    let opacity = num(raw, 'opacity', fallback.opacity, path, { min: 0 });
+    if (opacity > 1) {
+      warnings.push(`${path}.opacity must be 0 to 1; using 1.`);
+      opacity = 1;
+    }
+    return {
+      id: frameId(raw.id, path),
+      title: str(raw, 'title', fallback.title, path),
+      corners: corners(raw.corners, fallback.corners, `${path}.corners`),
+      physicalAspect: num(raw, 'physicalAspect', fallback.physicalAspect, path, { positive: true }),
+      debugColor: color(raw, 'debugColor', fallback.debugColor, path),
+      asset,
+      blend: oneOf<BlendMode>(raw, 'blend', BLEND_MODES, fallback.blend, path),
+      delay: num(raw, 'delay', fallback.delay, path, { min: 0 }),
+      duration: nullableNum(raw, 'duration', fallback.duration, path, { positive: true }),
+      loop: bool(raw, 'loop', fallback.loop, path),
+      fadeIn: num(raw, 'fadeIn', fallback.fadeIn, path, { min: 0 }),
+      fadeInStyle: oneOf<TransitionInStyle>(raw, 'fadeInStyle', TRANSITION_IN_STYLES, fallback.fadeInStyle, path),
+      fadeOut: num(raw, 'fadeOut', fallback.fadeOut, path, { min: 0 }),
+      opacity,
+    };
+  };
+  const ch = obj(data, 'choreography', 'config');
+  const entries: EntryConfig[] = [];
+  if (ch.entries !== undefined && !Array.isArray(ch.entries)) warnings.push('choreography.entries must be an array; using no entries.');
+  (Array.isArray(ch.entries) ? ch.entries : []).forEach((rawEntry: unknown, i) => {
+    const path = `choreography.entries[${i}]`;
+    if (!isObj(rawEntry)) {
+      warnings.push(`${path} is not an object; skipped.`);
+      return;
+    }
+    const fallback = newEntry(entries.map((e) => e.id));
+    let id = rawEntry.id;
+    if (typeof id !== 'string' || id === '' || entries.some((e) => e.id === id)) {
+      id = generateEntryId(entries.map((e) => e.id));
+      warnings.push(`${path}.id missing or duplicate; assigned ${id}.`);
+    }
+    const entryFrames: ChoreoFrameConfig[] = [];
+    if (rawEntry.frames !== undefined && !Array.isArray(rawEntry.frames)) warnings.push(`${path}.frames must be an array; using no frames.`);
+    (Array.isArray(rawEntry.frames) ? rawEntry.frames : []).forEach((rawFrame: unknown, j) => {
+      const fpath = `${path}.frames[${j}]`;
+      if (isObj(rawFrame)) entryFrames.push(choreoFrame(rawFrame, fpath, entryFrames.map((fr) => fr.debugColor)));
+      else warnings.push(`${fpath} is not an object; skipped.`);
+    });
+    entries.push({
+      id: id as string,
+      name: str(rawEntry, 'name', fallback.name, path),
+      enabled: bool(rawEntry, 'enabled', fallback.enabled, path),
+      holdTime: nullableNum(rawEntry, 'holdTime', fallback.holdTime, path, { positive: true }),
+      fadeTime: nullableNum(rawEntry, 'fadeTime', fallback.fadeTime, path),
+      frames: entryFrames,
+    });
+  });
+  const choreography: Config['choreography'] = {
+    crossfade: num(ch, 'crossfade', d.choreography.crossfade, 'choreography', { min: 0 }),
+    entries,
+  };
+
   // animation
   const a = obj(data, 'animation', 'config');
   const da = d.animation;
-  let transitionInStyle = da.transitionInStyle;
-  if (a.transitionInStyle !== undefined) {
-    if (TRANSITION_IN_STYLES.includes(a.transitionInStyle as TransitionInStyle)) transitionInStyle = a.transitionInStyle as TransitionInStyle;
-    else warnings.push(`animation.transitionInStyle must be ${TRANSITION_IN_STYLES.map((t) => `"${t}"`).join(' or ')}; using "${da.transitionInStyle}".`);
-  }
   const animation: Config['animation'] = {
-    transitionInStyle,
+    transitionInStyle: oneOf<TransitionInStyle>(a, 'transitionInStyle', TRANSITION_IN_STYLES, da.transitionInStyle, 'animation'),
     cycleDuration: num(a, 'cycleDuration', da.cycleDuration, 'animation', { positive: true }),
     transitionInDuration: num(a, 'transitionInDuration', da.transitionInDuration, 'animation', { min: 0 }),
     transitionOutDuration: num(a, 'transitionOutDuration', da.transitionOutDuration, 'animation', { min: 0 }),
@@ -230,6 +328,7 @@ export function parseConfig(raw: unknown, canvasAspect: number): ParseResult {
       global,
       wallQuad,
       frames,
+      choreography,
       animation,
       captions,
     },

@@ -28,6 +28,9 @@ export class QuadLayer {
     this.content = opts.content ? this.addMesh(createFrameMaterial(), 0) : null;
     this.hideWhenEmpty = opts.hideWhenEmpty ?? false;
     this.testPattern = this.addMesh(createTestPatternMaterial(accent), 1);
+    // three draws opaque meshes before transparent ones; the pattern (alpha 1) must stay on
+    // top of content that is transparent, so it renders in the transparent pass too.
+    this.testPattern.material.transparent = true;
   }
 
   private addMesh(material: THREE.ShaderMaterial, renderOrder: number): THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> {
@@ -58,9 +61,20 @@ export class QuadLayer {
     this.testPattern.visible = v;
   }
 
-  /** Additive: black adds no light, so frames drawn earlier show through it. */
-  setBlend(mode: BlendMode): void {
-    if (this.content) this.content.material.blending = mode === 'add' ? THREE.AdditiveBlending : THREE.NormalBlending;
+  /**
+   * How the content combines with what's behind it, and its opacity. Additive: black adds no
+   * light, so frames drawn earlier show through it. `revealBehind` (choreographed frames):
+   * normal fades show what's behind instead of black. Normal and alpha then need
+   * `transparent`, or three r186 switches blending off.
+   */
+  setBlend(mode: BlendMode, revealBehind = false, opacity = 1): void {
+    if (!this.content) return;
+    const m = this.content.material;
+    m.blending = mode === 'add' ? THREE.AdditiveBlending : THREE.NormalBlending;
+    const code = mode === 'add' || !revealBehind ? 0 : mode === 'alpha' ? 2 : 1;
+    m.transparent = code !== 0;
+    m.uniforms.uBlend!.value = code;
+    m.uniforms.uOpacity!.value = opacity;
   }
 
   setVisual(v: FrameVisual): void {

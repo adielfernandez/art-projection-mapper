@@ -2,10 +2,13 @@ import * as THREE from 'three';
 
 /**
  * Frame content shader, in frame-local space (width 1, height 1/physicalAspect):
- * cover-fit/zoom/pan via a UV view rect, a noise-mask dissolve in from black,
- * and a fade out to black.
- * Output alpha is always 1: normal blending covers what's behind, additive blending
- * (set per frame by the quad layer) adds to it, so black there is transparent.
+ * cover-fit/zoom/pan via a UV view rect, a noise-mask dissolve in, and a fade out.
+ *
+ * Output by uBlend, where k = fade × opacity × dissolve mask (set by the quad layer):
+ *   0 cover — rgb × k, alpha 1. Randomized frames (normal blending, opaque: fades go to
+ *             black) and every additive frame (black adds nothing, so it is see-through).
+ *   1 normal — rgb, alpha k. Choreographed frames: fades reveal what's behind.
+ *   2 alpha  — rgb, alpha = texture alpha × k (PNG, or WebM VP9 with alpha).
  */
 const vertex = /* glsl */ `
   uniform vec2 uSize;
@@ -29,6 +32,8 @@ const fragment = /* glsl */ `
   uniform float uSoftness; // dissolve edge width in noise units
   uniform float uNoiseScale; // blob size; 1 = about five blobs per frame width
   uniform float uSimpleFade; // 1 = transition in as a plain fade instead of the noise dissolve
+  uniform float uOpacity;
+  uniform float uBlend;   // 0 cover / add, 1 normal (transparent), 2 alpha
   varying vec2 vLocal;
 
   // Unit gradient for a lattice point (sin-free hash, stable at large coordinates).
@@ -67,12 +72,16 @@ const fragment = /* glsl */ `
   void main() {
     vec2 p = vLocal;
     vec3 col = vec3(0.0);
+    float k = 0.0;
+    float texAlpha = 1.0;
 
     if (uHasTex > 0.5) {
       vec2 fuv = p / uSize;
       vec2 tuv = uView.xy + (fuv - 0.5) * uView.zw;
       if (uInvertV > 0.5) tuv.y = 1.0 - tuv.y;
-      col = texture2D(uTex, tuv).rgb;
+      vec4 tex = texture2D(uTex, tuv);
+      col = tex.rgb;
+      texAlpha = tex.a;
       // three.js uploads sRGB video as linear RGBA8 and leaves decoding to the shader.
       if (uDecodeSRGB > 0.5) col = sRGBTransferEOTF(vec4(col, 1.0)).rgb;
 
@@ -84,10 +93,12 @@ const fragment = /* glsl */ `
         float t = uReveal * (1.0 + feather);
         reveal = smoothstep(n, n + feather, t);
       }
-      col *= reveal * uFade;
+      k = reveal * uFade * uOpacity;
     }
 
-    gl_FragColor = vec4(col, 1.0);
+    if (uBlend < 0.5) gl_FragColor = vec4(col * k, 1.0);
+    else if (uBlend < 1.5) gl_FragColor = vec4(col, k);
+    else gl_FragColor = vec4(col, texAlpha * k);
     #include <colorspace_fragment>
   }
 `;
@@ -109,6 +120,8 @@ export function createFrameMaterial(): THREE.ShaderMaterial {
       uSoftness: { value: 0.5 },
       uNoiseScale: { value: 1 },
       uSimpleFade: { value: 0 },
+      uOpacity: { value: 1 },
+      uBlend: { value: 0 },
     },
     depthTest: false,
     depthWrite: false,

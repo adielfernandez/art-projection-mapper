@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Art Projector is a browser-based projection mapping app. A projector displays a full-screen Chrome window (16:9) onto a wall holding physical picture frames in portrait orientation. The app warps artworks (images and videos) onto each frame, cycles them randomly from one or more asset pools, shows optional captions on the wall below each frame, and can play a wallpaper playlist across the wall behind the frames. The app is focused on mapping and showing the user's content; ambient effect layers are out of scope.
+Art Projector is a browser-based projection mapping app. A projector displays a full-screen Chrome window (16:9) onto a wall holding physical picture frames in portrait orientation. The app warps artworks (images and videos) onto each frame, cycles them randomly from one or more asset pools, shows optional captions on the wall below each frame, and can play a wallpaper playlist across the wall behind the frames. A second show type, Choreographed, plays a looping list of timed scenes instead, each with its own frames placed anywhere on the wall (section 5.7). The app is focused on mapping and showing the user's content; ambient effect layers are out of scope.
 
 The highest priority is mapping precision and mapping UX. The user must be able to align each frame's projected content tightly to a physical rectangle.
 
@@ -86,8 +86,8 @@ Each quad (every frame plus the wall quad) maps its local rectangle to its four 
 
 1. Clear to the configured background color (default black).
 2. **Wall**, drawn in wall space with its homography camera: the wallpaper playlist (nothing while it is empty, so the background color shows), and the wall test pattern when enabled.
-3. **Frames**, each drawn in frame space with its own homography camera: artwork, transition mask, and the test pattern when enabled. Frames draw in `frames` list order, so later frames are on top where they overlap. A frame with `blend: "add"` adds its light to what's behind it instead of covering it, so its black areas are transparent.
-4. **Captions**, drawn in wall space.
+3. **Frames**, each drawn in frame space with its own homography camera: artwork, transition mask, and the test pattern when enabled. Frames draw in `frames` list order, so later frames are on top where they overlap. A frame with `blend: "add"` adds its light to what's behind it instead of covering it, so its black areas are transparent. In a choreographed show this step draws the entries on screen instead (section 5.7): outgoing first, then current, each entry's frames in list order.
+4. **Captions**, drawn in wall space (randomized shows only).
 5. **Debug overlay**, drawn in screen space on a separate 2D canvas layered above the WebGL canvas, sized to device pixels.
 
 Renderer setup:
@@ -120,7 +120,7 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "assetPools": ["pools/paintings.json", "pools/videos.json"],
   "showType": "randomized",
   "ui": {
@@ -150,12 +150,13 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
       "debugColor": "#FF453A",
       "captionSpacing": 0.05,
       "captionOffsetX": 0,
-      "playlist": [
-        { "pool": "pools/paintings.json", "filepath": "media/nightmare.jpg" }
-      ],
       "blend": "normal"
     }
   ],
+  "choreography": {
+    "crossfade": 2.0,
+    "entries": []
+  },
   "animation": {
     "transitionInStyle": "noise",
     "cycleDuration": 12,
@@ -185,16 +186,20 @@ Field notes:
 - **`physicalAspect`** is the physical width ÷ height. The default is `0.6571` (23″ × 35″).
 - **`captionSpacing` (panel: "Caption Y offset"), `captionOffsetX` (panel: "Caption X offset"; may be negative), `titleSize`, `lineTwoSize`, `lineGap` and `riseDistance`** are in units of the frame's bottom-edge length measured in wall space (one "frame width").
 - **`inset`** (per-edge masking) was removed: corrections are made with the control points. An `inset` key in an older file is ignored and dropped on the next save.
-- **`showType`** is `"randomized"` (default) or `"manual"`. See 5.3.
-- **`playlist`** (per frame, default `[]`) lists the assets the frame plays in a manual show, in order. Each entry names an asset by its asset pool path (`pool`, as listed in `assetPools`) and its `filepath` in that pool; if several assets share a filepath, the first is used. Duplicates are allowed, within one playlist and across frames. Entries whose asset can't be found are kept and skipped. Playlists are kept, but ignored, in a randomized show.
-- **`blend`** (per frame, `"normal"` or `"add"`, default `"normal"`). `"normal"` covers whatever is behind the frame. `"add"` adds the frame's light to it, so black (including black gaps between assets and an empty frame) is transparent and frames drawn earlier show through. Meant for bright content on black (fire, glows). Additive content only adds light, so it cannot hide what's behind it, and overlapping bright areas can clip to white.
+- **`showType`** is `"randomized"` (default) or `"choreographed"`. See 5.3 and 5.7.
+- **`frames`** are the show's mapped frames, used by Randomized mode only. They have no playlist.
+- **`choreography`** (Choreographed mode): `crossfade` and the `entries`, each a timed scene with its own frames. The fields are specified in `Choreographed-Mode-Porting.md` §3.
+- **`wallQuad.playlist`** lists the wallpaper's assets, in order. Each item names an asset by its asset pool path (`pool`, as listed in `assetPools`) and its `filepath` in that pool; if several assets share a filepath, the first is used. Duplicates are allowed. Items whose asset can't be found are kept and skipped. A choreographed frame's `asset` uses the same form.
+- **`blend`** (per frame, `"normal"` or `"add"`, default `"normal"`; choreographed frames may also use `"alpha"`). `"normal"` covers whatever is behind the frame. `"add"` adds the frame's light to it, so black (including black gaps between assets and an empty frame) is transparent and frames drawn earlier show through. Meant for bright content on black (fire, glows). Additive content only adds light, so it cannot hide what's behind it, and overlapping bright areas can clip to white.
 - **`panSpeed`** is in frame widths per second.
 - **Durations** are in seconds.
-- **`id`** is generated once and never reused. Displayed frame numbers are list positions and may renumber after a removal; ids and settings never shift.
+- **`id`** is generated once and never reused, and is unique across every frame in the show (mapped and choreographed). Displayed frame numbers are list positions and may renumber after a removal; ids and settings never shift.
 - **Starting values.** All numeric defaults above are starting values to tune on site.
 - **Distinct default colors.** New frames get a default debug color distinct from existing frames.
 
-**Migration from schemaVersion 1:** `assetManifests` is renamed to `assetPools`, and each playlist entry's `manifest` to `pool`. Version 1 files load normally and are written as version 2 on the next Save.
+**Migration from schemaVersion 1:** `assetManifests` is renamed to `assetPools`, and each playlist entry's `manifest` to `pool`.
+
+**Migration from schemaVersion 2:** Manual mode becomes Choreographed. A `"manual"` show's mapped frames and their playlists become one entry, "Converted from Manual", with `holdTime: 60`: one choreographed frame per mapped frame (its `title`, `corners`, `physicalAspect`, `debugColor` and `blend`, a new id, the first playlist item as its asset, `loop: true`), with a load warning listing the dropped playlist items. Every mapped frame's `playlist` is dropped; a randomized show with non-empty ones gets a warning. Older files load normally and are written as version 3 on the next Save.
 
 **Default project** (no `config.json` in the folder, or no folder opened yet): two frames side by side, centered vertically, each about 50% of canvas height, with corners shaped by `physicalAspect`. `config.json` is created on the first Save.
 
@@ -300,7 +305,7 @@ An asset pool is a JSON file listing media. A project can have several (for exam
 **Test pattern:**
 - Toggled per frame (and for the wall quad) inside that quad's panel section. Runtime only, not saved.
 - On for every quad in a new show (see 5.1). While any test pattern is on, a newly added frame starts with its own on. Loading a show turns them all off.
-- Turned off automatically when content arrives: adding an item to a frame's or the wall's playlist turns off that quad's pattern; in a randomized show, adding files to an asset pool turns off every frame's pattern (not the wall's, which only plays its own playlist).
+- Turned off automatically when content arrives: adding an item to the wall's playlist turns off the wall's pattern; assigning an asset to a choreographed frame turns off that frame's; in a randomized show, adding files to an asset pool turns off every frame's pattern (not the wall's, which only plays its own playlist).
 - Rendered through the homography. It consists of:
   - a square grid that is uniform in physical units (it uses `physicalAspect`, so cells are physically square)
   - a checkerboard
@@ -319,16 +324,11 @@ An asset pool is a JSON file listing media. A project can have several (for exam
 
 **Show type** (`config.showType`, switchable live in the panel; switching restarts every frame):
 - **Randomized:** the rules below. All frames share every playable asset.
-- **Manual:** each frame plays its own `playlist`, in order, independently of the other frames. A frame's mode follows the number of playable entries in its playlist (entries that are missing or failed to load don't count):
-  - **0:** the frame stays black.
-  - **1:** static, with the same rules as static mode below.
-  - **2 or more:** the cycle in 5.4, stepping through the playlist in order and looping. No exclusion between frames. `frameStagger` applies when the show starts.
-  - **Live edits** apply at the next transition: the asset on screen finishes its cycle, then the frame continues with the updated list. The position is tracked by entry, so a moved entry keeps its place in the sequence, and removing the entry on screen plays the one that took its place next. Changes that move a frame between 0, 1 and 2+ entries apply immediately; a static frame swaps to a new single asset immediately.
-  - **Asset filepath edits** in the Assets panel carry over to playlist entries (marking the config modified).
+- **Choreographed:** the choreography's entries play in order and loop; the mapped frames aren't drawn. See 5.7.
 
-**Wallpaper** (`wallQuad.playlist`): the wall plays its own playlist in **both** show types, with the same rules as a frame in a manual show (0 entries: nothing, so the background color shows; 1: static; 2+: cycles in order with the usual transitions and timing). It is covered by frames where they overlap, gets no captions, and is not staggered. Its assets are fit to the wall quad with cover fit (pan and zoom flags apply). Switching show type doesn't restart it. In a randomized show the wallpaper doesn't exclude its asset from the frames' shuffle.
+**Wallpaper** (`wallQuad.playlist`): the wall plays its own playlist in **both** show types. Its mode follows the number of playable items (missing or failed ones don't count): 0, nothing, so the background color shows; 1, static, with the same rules as static mode below; 2 or more, the cycle in 5.4, stepping through the playlist in order and looping. Live edits apply at the next transition: the asset on screen finishes its cycle, then the wall continues with the updated list. The position is tracked by item, so a moved item keeps its place, and removing the item on screen plays the one that took its place next. Changes between 0, 1 and 2+ items apply immediately. Asset filepath edits in the Assets panel carry over to it (marking the config modified). It is covered by frames where they overlap, gets no captions, and is not staggered. Its assets are fit to the wall quad with cover fit (pan and zoom flags apply). Switching show type doesn't restart it. In a randomized show the wallpaper doesn't exclude its asset from the frames' shuffle.
 
-**Wall-only assets** (`wallOnly: true` in a pool, the "Wall only" checkbox in the Assets section): the wall may use any asset, but frames never show these. They are left out of the randomized shuffle (and so out of the asset count that picks static vs cycling), frame playlist pickers don't offer them, and a frame playlist entry that points at one is kept but skipped and flagged "wall only" (if the pool lists the same file again without the mark, that copy is used). Changing the mark applies like any live asset edit.
+**Wall-only assets** (`wallOnly: true` in a pool, the "Wall only" checkbox in the Assets section): the wall may use any asset, but frames never show these. They are left out of the randomized shuffle (and so out of the asset count that picks static vs cycling), a choreographed frame's picker doesn't offer them, and a choreographed frame that points at one is kept but skipped and flagged "wall only" (if the pool lists the same file again without the mark, that copy is used). Changing the mark applies like any live asset edit.
 
 The rest of this section describes the randomized show.
 
@@ -452,7 +452,7 @@ Selection logic gets Vitest coverage:
 - The panel's inner edge (facing the stage) drags to resize it: default 27rem, minimum 90% of that, maximum 60% of the screen width; double-click restores the default. The width is in rem so it keeps its proportions at FHD and 4K. It is runtime only (resets on reload). Section headers wrap their buttons onto a second line and truncate long names with "…" when the panel is narrow.
 - When open, the panel overlays the canvas and does not resize it.
 
-**Hotkeys** (`X`, `D`, Space, arrows, Tab, Esc, undo/redo) are ignored while focus is in a text, number or color input.
+**Hotkeys** (`X`, `D`, Space, `N`, arrows, Tab, Esc, undo/redo) are ignored while focus is in a text, number or color input. `N` (choreographed shows only) crossfades to the next entry.
 
 **Cursor:** hidden over the canvas when the panel is closed.
 
@@ -464,10 +464,11 @@ Selection logic gets Vitest coverage:
 **Sections**, each with a header and collapsible:
 
 1. **App controls:** "Art Projection Mapper" title, unsaved-change indicators and close button; below them the left/right switch.
-2. **Config:** Load (open project folder), Save. Shows the current folder name. Show type switch (Randomized / Manual).
+2. **Config:** Load (open project folder), Save. Shows the current folder name. Show type switch (Randomized / Choreographed).
 3. **Mapping:**
    - Global: background color, debug stroke width, point radius, crosshair size.
    - Wall quad (collapsible): debug color (checkbox-style swatch) and test pattern toggle at the top, then 4 control points with X/Y inputs, the convexity warning, and the "Wallpaper playlist" (section 5.3), shown in both show types.
+   - In a choreographed show, the frames below are hidden behind a note, "Frames are used by Randomized mode".
    - Each frame (collapsible, titled "Frame N: title"):
      - ↑ ↓ (reorder) and Remove buttons right-aligned in its header
      - the frame id, read-only, in gray, just under the heading
@@ -480,23 +481,34 @@ Selection logic gets Vitest coverage:
      - physical aspect (number input)
      - caption X offset and caption Y offset (slider and number)
      - convexity warning when applicable
-     - playlist (manual show only; hidden when randomized): one row per entry with thumbnail, title, and ↑ ↓ × buttons; the entry on screen is highlighted; missing or failed entries are flagged. "+ Add asset" opens a thumbnail picker of every loaded asset, grouped by asset pool; clicking one appends it.
-     - in the playlist picker, an "Import new files…" tile (file picker) and, with several pools, an "Into asset pool" chooser. Files dropped on the playlist do the same. Imported files are added to that pool (section 5.1) and appended to this playlist. A short note ("Added 2 to this playlist.") confirms it and fades out after 4 seconds. The Assets section's own messages do the same when they are informational ("Added 1 file to assets.json…", "Saved…"); warnings and errors stay until the next message.
    - "Add new frame" button.
-4. **Assets:**
+   - The wallpaper playlist: one row per item with thumbnail, title, and ↑ ↓ × buttons; the item on screen is highlighted; missing or failed items are flagged. "+ Add asset" opens a thumbnail picker of every loaded asset, grouped by asset pool; clicking one appends it. The picker starts with an "Import new files…" tile (file picker) and, with several pools, an "Into asset pool" chooser. Files dropped on the playlist do the same. Imported files are added to that pool (section 5.1) and appended to the playlist. A short note ("Added 2 to this playlist.") confirms it and fades out after 4 seconds. The Assets section's own messages do the same when they are informational ("Added 1 file to assets.json…", "Saved…"); warnings and errors stay until the next message.
+4. **Choreography** (choreographed shows only): the transport, crossfade, and the entries with their frame editors. See `Choreographed-Mode-Porting.md` §6.
+5. **Assets:**
    - "Save All Assets" button, shown only with two or more pools.
    - Nested list grouped by asset pool file. Each pool's header has a count, modified/error badges, a "Save Asset Pool" button and a red × (hidden for the last pool). Its body ends with "+ Add files…" (multi-select file picker), and the whole pool accepts files dropped from the OS (highlighted while dragging).
-   - Each asset is collapsible, with a small preview thumbnail (or video poster), a "new" badge while its file is staged, a × remove button whose hover note says the file stays on disk (and names any frames whose playlists use it), and editable fields:
+   - Each asset is collapsible, with a small preview thumbnail (or video poster), a "new" badge while its file is staged, a × remove button whose hover note says the file stays on disk (and names the wallpaper and any choreographed frames, as "Entry N: name → Frame M", that use it), and editable fields:
      - text inputs for `title`, `artist`, `year`, `filepath`
      - checkboxes for `zoom`, `pan`, "Wall only" (`wallOnly`)
    - A name field and "+ Add asset pool" button at the bottom.
    - Edits apply live to what plays. Load errors are flagged per asset.
-5. **Animation:**
+6. **Animation:**
+   - in a choreographed show, a note at the top: only dissolve softness, noise scale, zoom start and pan aspect threshold apply there (and the noise settings show whatever the style)
    - first, "Transition-In Style": a Style dropdown (Simple Fade, Noise Dissolve); "Dissolve softness" and "Noise Scale" show only for Noise Dissolve
    - cycle duration, transition in and out durations, transition delay, frame stagger, max hold
    - zoom start, pan speed, pan aspect threshold
    - caption sizes, color, fade duration, rise distance, line-two delay
    - Sliders paired with number inputs for precision.
+
+### 5.7 Choreographed mode
+
+Specified in full by `Choreographed-Mode-Porting.md` (in this repo), which was ported from Ossuary Wall's playlist engine. In short:
+- The show plays `choreography.entries` in order and loops, crossfading from one entry into the next over the incoming entry's `fadeTime` (or `choreography.crossfade`). A disabled entry, or one with no playable frame, is skipped.
+- Each entry is a timed scene: its frames each play one asset, starting `delay` seconds after the entry starts, for `duration` (or the asset's own length), with their own fade in (`fadeInStyle`: Noise Dissolve or Simple Fade) and fade out, opacity and blend (`normal`, `add` or `alpha`). The entry lasts its `holdTime`, or until its last frame finishes.
+- Fades reveal what's behind (the wallpaper and earlier frames), unlike Randomized frames, which fade to black.
+- Pan and zoom follow the Randomized rules, spread over the frame's whole visible time; videos don't move. No captions.
+- Mapping, blend and opacity are read live; timing applies from the entry's next start. Pause Show freezes the entry clock and the videos.
+- Only the most recently opened entry's frames get handles, outlines and Tab stops.
 
 ---
 
@@ -571,7 +583,8 @@ Copy this section into `CLAUDE.md`.
     render/     renderer.ts, quadCamera.ts, frameRenderer.ts, wallRenderer.ts,
                 testPattern.ts, transitionMaterial.ts, debugOverlay.ts
     content/    selection.ts, shuffleBag.ts, shuffleBag.test.ts, scheduler.ts,
-                mediaLoader.ts, motion.ts
+                mediaLoader.ts, motion.ts, playlist.ts,
+                choreographyEngine.ts, choreoPlayback.ts, validation.ts
     captions/   captionLayout.ts, captionRenderer.ts
     ui/         panel.ts, hotkeys.ts, sections/*.ts, panel.css
   ```
@@ -583,8 +596,9 @@ Copy this section into `CLAUDE.md`.
 These were not explicitly specified and were decided during brief writing:
 
 1. An image with `pan = true` whose aspect does not exceed the threshold falls back to zoom if `zoom = true`, otherwise static.
-2. In static mode (playable assets ≤ frames, or a manual playlist with one playable entry), images use static cover with no zoom or pan, videos loop, and captions appear without animation.
+2. In static mode (playable assets ≤ frames, or a wallpaper playlist with one playable item), images use static cover with no zoom or pan, videos loop, and captions appear without animation.
 3. `maxHoldDuration` applies only to panning images, not to video.
 4. The cursor stays hidden whenever the panel is closed but cursor shows when debug visuals are shown with `D`. Pressing `D` to hide debug visuals also hides cursor. 
 5. Test pattern toggles are runtime only and not saved to config.
 6. The default transition-in style is a noise-mask dissolve from black (`transitionInStyle: "noise"`); Simple Fade is the alternative.
+7. The decisions in `Choreographed-Mode-Porting.md` §10 (noise fade-in and normal blend by default for choreographed frames, fades revealing what's behind, pan and zoom speed following the frame's length, and the 60 s converted entry).

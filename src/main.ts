@@ -28,12 +28,16 @@ const scheduler = new Scheduler(store, {
   maxAnisotropy: renderer.gl.capabilities.getMaxAnisotropy(),
 });
 renderer.setVisualSource((id, aspect) => scheduler.visual(id, aspect));
+renderer.setChoreoSource(() => scheduler.choreo.draws());
 renderer.setCaptionSource((id) => scheduler.captionState(id));
 const panel = new Panel(store, project, scheduler);
 document.body.append(panel.el);
 
 attachPointerMapping(stage, glCanvas, store);
-attachHotkeys(store, { togglePanel: () => store.setPanelOpen(!store.runtime.panelOpen) });
+attachHotkeys(store, {
+  togglePanel: () => store.setPanelOpen(!store.runtime.panelOpen),
+  nextEntry: () => scheduler.choreo.engine.next(),
+});
 
 // Dev builds only: handle for debugging and automated checks from the console.
 if (import.meta.env.DEV) Object.assign(window, { __app: { store, project, scheduler, renderer } });

@@ -3,8 +3,8 @@ import { WALL_QUAD_ID } from '../../state/schema';
 import { Binder, button, checkboxRow, h, section, showNote, textRow, withHelp } from '../controls';
 import { dropZone } from '../dropZone';
 import type { Thumbnails } from '../thumbnails';
+import { entryLabel, frameLabel } from '../labels';
 import type { PanelContext } from './context';
-import { frameLabel } from './mappingSection';
 
 /**
  * Assets: asset pools (grouped), each asset editable live. Files can be added with a picker
@@ -84,11 +84,18 @@ export function assetsSection(ctx: PanelContext): HTMLElement {
   return el;
 }
 
-/** "Frame 2", or "the wall" for the wallpaper playlist. */
-function quadName(id: string, frames: readonly { id: string; title: string }[]): string {
+/** "Entry 1: Triptych → Frame 2" for a choreographed frame, or "the wall" for the wallpaper playlist. */
+function quadName(ctx: PanelContext, id: string): string {
   if (id === WALL_QUAD_ID) return 'the wall';
-  const i = frames.findIndex((f) => f.id === id);
-  return frameLabel(i, frames[i]?.title ?? '');
+  const found = ctx.store.findChoreoFrame(id);
+  if (!found) return id;
+  return `${entryLabel(found.entryIndex, found.entry.name)} → ${frameLabel(found.index, found.frame.title)}`;
+}
+
+/** Hover note: who uses an asset (or a pool's assets), and what removing it means for them. */
+function usersNote(ctx: PanelContext, ids: string[], subject: string): string {
+  if (ids.length === 0) return '';
+  return `${subject} used by ${ids.map((id) => quadName(ctx, id)).join(', ')}; those will show as missing.`;
 }
 
 function poolGroup(ctx: PanelContext, b: Binder, thumbs: Thumbnails, path: string): HTMLElement {
@@ -125,11 +132,9 @@ function poolGroup(ctx: PanelContext, b: Binder, thumbs: Thumbnails, path: strin
     save.classList.toggle('attention', cur.dirty);
     // The last pool can't be removed (a show without pools has nothing to add content to).
     remove.hidden = store.pools.length < 2;
-    const frames = store.config.frames;
-    const users = store.framesUsingPool(path).map((id) => quadName(id, frames));
     remove.dataset.help = [
       `Remove ${path} from the show. The file and its media stay on disk.`,
-      users.length ? `Its assets are in the playlist of ${users.join(', ')}; those entries will show as missing.` : '',
+      usersNote(ctx, store.framesUsingPool(path), 'Its assets are'),
     ].join(' ').trim();
   });
 
@@ -195,14 +200,12 @@ function assetItem(ctx: PanelContext, b: Binder, thumbs: Thumbnails, uid: string
     errText.textContent = error ? `⚠ ${error}` : '';
     const staged = project.isStaged(uid);
     fresh.hidden = !staged;
-    // Hover note: what × does, and which playlists would lose this asset.
-    const frames = store.config.frames;
-    const users = store.framesUsingAsset(uid).map((id) => quadName(id, frames));
+    // Hover note: what × does, and which frames and playlists would lose this asset.
     remove.dataset.help = [
       staged
         ? 'Remove from the show. This file was never copied into the project folder, so nothing changes on disk.'
         : 'Remove from the show. The file stays on disk.',
-      users.length ? `It is in the playlist of ${users.join(', ')}; those entries will show as missing.` : '',
+      usersNote(ctx, store.framesUsingAsset(uid), 'It is'),
     ].join(' ').trim();
   });
 
@@ -226,7 +229,7 @@ function assetItem(ctx: PanelContext, b: Binder, thumbs: Thumbnails, uid: string
     checkboxRow(b, 'Pan', () => !!entry()?.pan, (v) => store.updateAsset(uid, { pan: v })),
     withHelp(
       checkboxRow(b, 'Wall only', () => !!entry()?.wallOnly, (v) => store.updateAsset(uid, { wallOnly: v })),
-      "Only the wall's wallpaper playlist can use this asset. The frames skip it in both show types: it's left out of the Randomized shuffle, and a frame's playlist marks it \"wall only\" and plays the rest.",
+      "Only the wall's wallpaper playlist can use this asset. The frames skip it in both show types: it's left out of the Randomized shuffle, and a choreographed frame that uses it is marked \"wall only\" and skipped.",
     ),
     errText,
   ], { class: 'asset', headerExtras: [err, fresh, remove] });

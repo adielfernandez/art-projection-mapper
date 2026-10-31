@@ -1,5 +1,5 @@
 /**
- * Manual show: per-frame playlists. Pure functions; the scheduler owns playback state.
+ * The wall's wallpaper playlist. Pure functions; the scheduler owns playback state.
  */
 import type { AssetEntry, PlaylistItem } from '../state/schema';
 import type { FrameMode } from './selection';
@@ -18,7 +18,7 @@ export interface PlaylistEntry {
 /**
  * Resolve playlist items to assets: by pool path, then the first asset with that filepath.
  * Items whose asset is not found are 'missing'; assets that failed to load are 'error'.
- * A frame's playlist (`forWall` false) skips assets marked wall only ('wallOnly'), using a
+ * A choreographed frame's asset (`forWall` false) skips assets marked wall only ('wallOnly'), using a
  * copy of the same file that isn't marked if the pool lists one.
  */
 export function resolvePlaylist(

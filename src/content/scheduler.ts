@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import { WALL_QUAD_ID, type AssetEntry, type PlaylistItem, type ShowType } from '../state/schema';
 import type { Store } from '../state/store';
+import { ChoreoPlayback } from './choreoPlayback';
 import { mediaKind, playableAssets, randomizedMode, staticAssignments, type FrameMode } from './selection';
 import { loadImage, loadVideo, type ImageSizing, type LoadedMedia } from './mediaLoader';
 import { planMotion, sampleView, type MotionPlan, type View } from './motion';
@@ -37,7 +38,7 @@ type PlayerState = 'loading' | 'in' | 'hold' | 'out' | 'static';
 
 interface Slot {
   uid: string;
-  /** Playlist entry key (manual show), else null. */
+  /** Playlist entry key (the wall's wallpaper), else null. */
   key: number | null;
   entry: AssetEntry;
   media: LoadedMedia;
@@ -47,7 +48,7 @@ interface Slot {
 
 interface Pending {
   uid: string;
-  /** Playlist entry key and its index when picked (manual show), else null / -1. */
+  /** Playlist entry key and its index when picked (the wall's wallpaper), else null / -1. */
   key: number | null;
   index: number;
   media: LoadedMedia | null;
@@ -60,7 +61,7 @@ const BLACK: FrameVisual = { texture: null, invertV: false, view: { cx: 0.5, cy:
 const VIDEO_END_GRACE = 3;
 
 class FramePlayer {
-  /** Manual show: this frame's mode (black, one asset held, or cycling). */
+  /** The wall: its mode from its playlist (nothing, one asset held, or cycling). */
   mode: FrameMode = 'empty';
   state: PlayerState = 'loading';
   t = 0;
@@ -74,7 +75,7 @@ class FramePlayer {
   holdEnd = 0;
   /** Pan/zoom length: in + hold + out, fixed when the in-transition starts. */
   motionDur = 0;
-  /** Manual show: this frame's resolved playlist, and its position in it. */
+  /** The wall: its resolved playlist, and its position in it. */
   entries: PlaylistEntry[] = [];
   anchor: Anchor = START_ANCHOR;
 
@@ -92,10 +93,12 @@ class FramePlayer {
 }
 
 /**
- * Per-frame playback. Reads config and pools from the store; the only state it
- * writes is media load errors, via store actions.
+ * Playback: the mapped frames in a randomized show, the wall's wallpaper in both show types,
+ * and (through ChoreoPlayback) the choreography in a choreographed show. Reads config and
+ * pools from the store; the only state it writes is media load errors, via store actions.
  */
 export class Scheduler {
+  readonly choreo: ChoreoPlayback;
   private players = new Map<string, FramePlayer>();
   private bag = new ShuffleBag();
   /** Randomized show: the mode shared by every frame. */
@@ -103,6 +106,8 @@ export class Scheduler {
   private signature = '';
   /** Show type the players were set up for; null forces a fresh start. */
   private showType: ShowType | null = null;
+  /** The config the choreography started from; a new one (a show was loaded) starts it over. */
+  private configRef: unknown = null;
   private clock = 0;
   private paused = false;
   /** Videos that were playing when the show was paused. */
@@ -112,6 +117,7 @@ export class Scheduler {
     private store: Store,
     private deps: SchedulerDeps,
   ) {
+    this.choreo = new ChoreoPlayback(store, deps);
     store.subscribe((e) => {
       if (e.assets || e.frames) this.sync();
       if (e.runtime) this.applyPause();
@@ -129,18 +135,18 @@ export class Scheduler {
     const paused = this.store.runtime.paused;
     if (paused === this.paused) return;
     this.paused = paused;
+    const videos = () => [...[...this.players.values()].map((p) => p.current?.media.video), ...this.choreo.liveVideos()];
     if (paused) {
-      for (const p of this.players.values()) {
-        const v = p.current?.media.video;
+      for (const v of videos()) {
         if (v && !v.paused && !v.ended) {
           v.pause();
           this.pausedVideos.add(v);
         }
       }
     } else {
-      // Only resume videos still on screen; released ones were unloaded.
-      const onScreen = new Set([...this.players.values()].map((p) => p.current?.media.video));
-      for (const v of this.pausedVideos) if (onScreen.has(v)) void v.play().catch(() => {});
+      // Only resume videos still in use; released ones were unloaded.
+      const inUse = new Set(videos());
+      for (const v of this.pausedVideos) if (inUse.has(v)) void v.play().catch(() => {});
       this.pausedVideos.clear();
     }
   }
@@ -151,7 +157,7 @@ export class Scheduler {
     return p?.current ? { uid: p.current.uid, entry: p.current.entry, state: p.state, t: p.t } : null;
   }
 
-  /** Manual show: key of the playlist entry on screen in a frame, or null. */
+  /** The wall: key of the wallpaper playlist entry on screen, or null. */
   playingKey(frameId: string): number | null {
     return this.players.get(frameId)?.current?.key ?? null;
   }
@@ -185,6 +191,7 @@ export class Scheduler {
     this.signature = '';
     this.showType = null;
     this.bag = new ShuffleBag();
+    this.choreo.reset();
     this.sync();
   }
 
@@ -214,27 +221,25 @@ export class Scheduler {
       this.signature = '';
       this.mode = 'empty';
       this.bag = new ShuffleBag();
+      // Choreographed starts from its first playable entry (and holds no media otherwise).
+      this.choreo.reset();
+    } else if (this.configRef !== cfg) {
+      // A show was loaded: its choreography starts from the top, with none of the old media.
+      this.choreo.reset();
     }
-    if (cfg.showType === 'manual') this.syncManual(frameIds, fresh);
-    else this.syncRandomized(frameIds);
-    // The wall always plays its own playlist, like a frame in a manual show.
+    this.configRef = cfg;
+    // A choreographed show ignores the mapped frames (their players were released above).
+    if (cfg.showType === 'randomized') this.syncRandomized(frameIds);
+    // The wall always plays its own playlist.
     this.syncPlaylist(WALL_QUAD_ID, cfg.wallQuad.playlist, 0);
   }
 
   /**
-   * Manual show: each frame plays its own playlist. A frame's mode follows its playable entry
-   * count (0 black, 1 static, more cycling), and a change of mode restarts that frame. Other
-   * edits apply at the next transition: the asset on screen finishes, and a preloaded next asset
-   * that is no longer next is dropped. A static frame swaps to a new single asset right away.
+   * The wall's playlist. Its mode follows its playable entry count (0 nothing, 1 static, more
+   * cycling), and a change of mode restarts it. Other edits apply at the next transition: the
+   * asset on screen finishes, and a preloaded next asset that is no longer next is dropped. A
+   * static wall swaps to a new single asset right away. `delay`: start offset on a mode change.
    */
-  private syncManual(frameIds: string[], fresh: boolean): void {
-    const cfg = this.store.config;
-    const stagger = cfg.animation.frameStagger;
-    // Stagger frames only when the whole show starts; a single frame changing mode starts now.
-    frameIds.forEach((id, i) => this.syncPlaylist(id, cfg.frames[i]!.playlist, fresh ? i * stagger : 0));
-  }
-
-  /** One playlist-driven player (a frame in a manual show, or the wall). `delay`: start offset on a mode change. */
   private syncPlaylist(id: string, playlist: readonly Readonly<PlaylistItem>[], delay: number): void {
     const p = this.player(id);
     p.entries = resolvePlaylist(playlist, this.store.playlistKeys(id), this.store.pools, this.store.runtime.assetErrors, id === WALL_QUAD_ID);
@@ -313,12 +318,12 @@ export class Scheduler {
     });
   }
 
-  /** A player follows its own playlist: every frame in a manual show, and always the wall. */
+  /** Only the wall follows its own playlist. */
   private playsPlaylist(p: FramePlayer): boolean {
-    return this.showType === 'manual' || p.id === WALL_QUAD_ID;
+    return p.id === WALL_QUAD_ID;
   }
 
-  /** A player's mode: shared by all frames in a randomized show, per player otherwise. */
+  /** A player's mode: shared by all frames in a randomized show, the wall's own otherwise. */
   private modeOf(p: FramePlayer): FrameMode {
     return this.playsPlaylist(p) ? p.mode : this.mode;
   }
@@ -403,8 +408,8 @@ export class Scheduler {
   }
 
   /**
-   * Cycling: choose the next asset for a frame. Manual: the next playable playlist entry.
-   * Randomized: from the shuffle bag, excluding anything shown or loading anywhere.
+   * Cycling: choose the next asset for a frame. The wall: the next playable playlist entry.
+   * Randomized frames: from the shuffle bag, excluding anything shown or loading anywhere.
    */
   private trySelect(p: FramePlayer): void {
     if (p.next || this.modeOf(p) !== 'cycling') return;
@@ -429,6 +434,7 @@ export class Scheduler {
   update(dt: number): void {
     if (this.paused) return;
     this.clock += dt;
+    if (this.showType === 'choreographed') this.choreo.update(dt);
     for (const p of this.players.values()) {
       p.t += dt;
       const mode = this.modeOf(p);

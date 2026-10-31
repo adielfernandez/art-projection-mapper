@@ -1,23 +1,34 @@
 import * as THREE from 'three';
 import { CaptionRenderer, type CaptionSourceState } from '../captions/captionRenderer';
+import type { ChoreoDraw } from '../content/choreoPlayback';
 import type { FrameVisual } from '../content/scheduler';
 import type { Quad } from '../math/homography';
 import { WALL_QUAD_ID, type QuadId } from '../state/schema';
 import type { Store, StoreEvent } from '../state/store';
 import { QuadLayer } from './quadLayer';
 
+/** No content: a choreographed frame drawn only for its test pattern. */
+const NO_CONTENT: FrameVisual = {
+  texture: null, invertV: false, view: { cx: 0.5, cy: 0.5, sx: 1, sy: 1 }, reveal: 0, fade: 0, seed: 0, softness: 0.5, noiseScale: 1, simpleFade: false,
+};
+
 /**
- * Owns the WebGL renderer and one QuadLayer per mapped quad. Reads state only via
- * the store and its subscription; never mutates state.
+ * Owns the WebGL renderer and one QuadLayer per mapped quad (the wall, each mapped frame, each
+ * choreographed frame). Reads state only via the store and its subscription; never mutates state.
  */
 export class Renderer {
   readonly gl: THREE.WebGLRenderer;
   private wall: QuadLayer;
   private captions: CaptionRenderer;
+  /** The show's mapped frames (Randomized mode). */
   private frames = new Map<QuadId, QuadLayer>();
+  /** Choreographed frames, by id. */
+  private choreo = new Map<QuadId, QuadLayer>();
   private clearColor = new THREE.Color();
   /** Supplies per-frame content each tick (the scheduler). */
   private visualSource: ((frameId: string, frameAspect: number) => FrameVisual) | null = null;
+  /** Supplies the choreographed frames to draw each tick, in order. */
+  private choreoSource: (() => ChoreoDraw[]) | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -46,6 +57,10 @@ export class Renderer {
     this.visualSource = fn;
   }
 
+  setChoreoSource(fn: () => ChoreoDraw[]): void {
+    this.choreoSource = fn;
+  }
+
   setCaptionSource(fn: (frameId: string) => CaptionSourceState | null): void {
     this.captions.setSource(fn);
   }
@@ -63,6 +78,11 @@ export class Renderer {
     const vp = this.store.runtime.viewport;
     if (this.visualSource) this.wall.setVisual(this.visualSource(WALL_QUAD_ID, vp.w / vp.h));
     this.wall.render(gl);
+    if (this.store.config.showType === 'choreographed') {
+      // 3. The entries on screen (no captions in this mode).
+      this.renderChoreography(gl);
+      return;
+    }
     // 3. Frames
     for (const f of this.store.config.frames) {
       const layer = this.frames.get(f.id);
@@ -73,6 +93,30 @@ export class Renderer {
     // 4. Captions, in wall space
     this.captions.update(this.wall.quadCam.homography);
     this.captions.render(gl, this.wall.quadCam.camera);
+  }
+
+  /**
+   * Entries on screen, outgoing first, each one's frames in order (blend and opacity live).
+   * Then the test patterns of the edited entry's frames that aren't on screen, for mapping.
+   * Solo draws only that frame.
+   */
+  private renderChoreography(gl: THREE.WebGLRenderer): void {
+    const solo = this.store.runtime.soloFrameId;
+    const drawn = new Set<string>();
+    for (const d of this.choreoSource?.() ?? []) {
+      const layer = this.choreo.get(d.frameId);
+      if (!layer || (solo && d.frameId !== solo)) continue;
+      layer.setBlend(d.blend, true, d.opacity);
+      layer.setVisual(d.visual);
+      layer.render(gl);
+      drawn.add(d.frameId);
+    }
+    for (const f of this.store.editedEntry()?.frames ?? []) {
+      const layer = this.choreo.get(f.id);
+      if (!layer || drawn.has(f.id) || (solo && f.id !== solo) || !this.store.isTestPatternOn(f.id)) continue;
+      layer.setVisual(NO_CONTENT);
+      layer.render(gl);
+    }
   }
 
   private onChange(e: StoreEvent): void {
@@ -102,11 +146,29 @@ export class Renderer {
       layer.setAccent(f.debugColor);
       layer.setBlend(f.blend);
     }
+
+    const choreoFrames = this.store.config.choreography.entries.flatMap((e) => e.frames);
+    const choreoIds = new Set(choreoFrames.map((f) => f.id));
+    for (const [id, layer] of this.choreo) {
+      if (!choreoIds.has(id)) {
+        layer.dispose();
+        this.choreo.delete(id);
+      }
+    }
+    for (const f of choreoFrames) {
+      let layer = this.choreo.get(f.id);
+      if (!layer) {
+        // Nothing (not black) while it has no content: what's behind shows through.
+        layer = new QuadLayer(f.debugColor, { content: true, hideWhenEmpty: true });
+        this.choreo.set(f.id, layer);
+      }
+      layer.setAccent(f.debugColor);
+    }
     this.wall.setAccent(this.store.config.wallQuad.debugColor);
   }
 
   private syncAll(): void {
-    for (const id of this.store.allQuadIds()) this.syncQuad(id);
+    for (const id of [WALL_QUAD_ID, ...this.frames.keys(), ...this.choreo.keys()]) this.syncQuad(id);
     this.syncRuntime();
   }
 
@@ -117,14 +179,14 @@ export class Renderer {
       this.wall.setMapping(1, vp.h / vp.w, corners, vp);
       return;
     }
-    const f = this.store.config.frames.find((fr) => fr.id === id);
-    const layer = this.frames.get(id);
+    const f = this.store.config.frames.find((fr) => fr.id === id) ?? this.store.findChoreoFrame(id)?.frame;
+    const layer = this.frames.get(id) ?? this.choreo.get(id);
     if (!f || !layer) return;
     layer.setMapping(1, 1 / f.physicalAspect, f.corners as unknown as Quad, vp);
   }
 
   private syncRuntime(): void {
     this.wall.setTestPatternVisible(this.store.isTestPatternOn(WALL_QUAD_ID));
-    for (const [id, layer] of this.frames) layer.setTestPatternVisible(this.store.isTestPatternOn(id));
+    for (const [id, layer] of [...this.frames, ...this.choreo]) layer.setTestPatternVisible(this.store.isTestPatternOn(id));
   }
 }
