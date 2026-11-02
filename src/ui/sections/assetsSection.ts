@@ -61,7 +61,7 @@ export function assetsSection(ctx: PanelContext): HTMLElement {
 
   binder.add(() => {
     const rt = store.runtime;
-    // A new message shows; info ("Added…", "Saved…") fades after a few seconds, warnings and errors stay.
+    // A new message shows; info ("Added…") fades after a few seconds, warnings and errors stay.
     const m = rt.assetMessage;
     if (m !== shownMessage) {
       shownMessage = m;

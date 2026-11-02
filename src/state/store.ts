@@ -46,7 +46,7 @@ export interface RuntimeState {
   reopenName: string | null;
   /** Latest project I/O status for the Config section. */
   ioMessage: IoMessage | null;
-  /** Latest asset save status for the Assets section. */
+  /** Latest Assets section message (adding files or pools). Save results go to ioMessage. */
   assetMessage: IoMessage | null;
   /** Media load errors by asset uid. Flagged assets are never played. */
   assetErrors: Record<string, string>;

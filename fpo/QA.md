@@ -1,6 +1,6 @@
 # FPO QA content
 
-Placeholder content for testing Art Projector before the real artwork is ready. Every image is a diagnostic card. Each one shows:
+Placeholder content for testing Art Projection Mapper on a projector, without real artwork. Every image is a diagnostic card. Each one shows:
 - the asset ID, its expected behavior, its pixel size and its aspect ratio
 - a numbered grid, with the ID repeated along the middle row and middle column so you can identify any crop
 - the words TOP, BOTTOM, L and R at the edges
@@ -15,7 +15,7 @@ Videos also show:
 
 All text fields use lorem-style Latin.
 
-Regenerate everything with `python fpo/generate.py`. This needs Pillow and ffmpeg, and it overwrites the three folders.
+The three folders below are not stored in git: build them with `python fpo/generate.py`. This needs Pillow (with AVIF support) and ffmpeg, and it overwrites the folders.
 
 | Folder | Open it to test |
 |---|---|
@@ -23,7 +23,7 @@ Regenerate everything with `python fpo/generate.py`. This needs Pillow and ffmpe
 | `fpo/static/` | Static mode: 3 frames and 2 assets, so the frames show A, B, A. |
 | `fpo/tight-pool/` | Cycling with assets = frames + 1: 2 frames and 3 assets. |
 
-Open a folder with **Load…** in the Config section. Each folder has its own `config.json` with default timing: cycle 12 s, panSpeed 0.03, maxHold 30 s and threshold 1.15. The frames are a generic layout, so remap them to the physical frames (or copy your mapped `frames` block in).
+Open a folder with **Load Show** in the Config section. Each folder has its own `config.json` with default timing: cycle 12 s, panSpeed 0.03, maxHold 30 s and threshold 1.15. The frames are a generic layout, so remap them to the physical frames (or copy your mapped `frames` block in).
 
 ---
 
@@ -124,11 +124,11 @@ Also watch for:
 - [ ] **Load** with unsaved asset edits asks for confirmation first.
 - [ ] Reload the page with unsaved edits. Chrome shows its "Leave site?" prompt.
 
-> ⚠ **Known Save behavior, please decide:** saving `problems.json` rewrites it from what was parsed. These are **dropped** from the file:
+> **Known Save behavior** (kept on purpose, see `ProjectBrief.md` §8 item 7): saving `problems.json` rewrites it from what was parsed, so these are **dropped** from the file:
 > - the 3 entries that were skipped with warnings (P08, P09, and the non-object entry)
 > - P10's invalid field values (`year: true`, `zoom: "yes"`, `pan: 1`)
 >
-> Also, `paintings.json` saves the numeric year `1999` as the text `"1999"`. Tell me if malformed entries should be kept verbatim instead.
+> Also, `paintings.json` saves the numeric year `1999` as the text `"1999"`.
 
 ## 5. Static mode (`fpo/static/`)
 
@@ -146,12 +146,12 @@ Also watch for:
 
 ## 7. Captions (M4)
 
-- [ ] Captions sit centered below each frame's bottom edge. The title is in Source Serif 4 Italic and "artist, year" is in Public Sans, in warm off-white.
+- [ ] Captions sit below each frame's bottom edge, left-aligned with its bottom-left corner. The title is in Source Serif 4 Italic and "artist, year" is in Public Sans, in warm off-white.
 - [ ] The caption fades in and rises toward the frame once the artwork's dissolve finishes. Line 2 starts about 0.5 s after the title. Both fade out with the artwork.
 - [ ] Static mode (`fpo/static/`): captions are shown immediately, with no animation.
 - [ ] Drag or nudge a frame's bottom corners. The caption follows live and rotates to match the bottom edge's angle. The text re-sharpens a moment after you stop moving.
 - [ ] Moving a wall-quad corner shifts captions with the wall.
-- [ ] **Caption spacing** (per frame, in Mapping) moves that frame's caption away from or toward the frame.
+- [ ] **Caption Y offset** (per frame, in Mapping) moves that frame's caption away from or toward the frame, and **Caption X offset** slides it along the bottom edge (negative = left).
 - [ ] Caption sizes, gap, color, fade, rise and line-2 delay (in Animation) update live. Timing changes apply to the next appearance.
 - [ ] Text is crisp on the projector, with no blur or blockiness.
 - [ ] Editing a playing asset's title changes its caption at that asset's **next** appearance.

@@ -1,8 +1,10 @@
-# Art Projector: Project Brief
+# Art Projection Mapper: Project Brief
+
+> **Status (November 2026):** finished and used for the Halloween 2026 party. Milestones M0–M5 are done, and so is the follow-up work recorded in section 9. This brief describes the app **as it ended up**, not just as first planned: where the plan changed, the text was updated and section 9 records why. Unfinished work lives on a separate branch (section 10).
 
 ## 1. Overview
 
-Art Projector is a browser-based projection mapping app. A projector displays a full-screen Chrome window (16:9) onto a wall holding physical picture frames in portrait orientation. The app warps artworks (images and videos) onto each frame, cycles them randomly from one or more asset pools, shows optional captions on the wall below each frame, and can play a wallpaper playlist across the wall behind the frames. The app is focused on mapping and showing the user's content; ambient effect layers are out of scope.
+Art Projection Mapper is a browser-based projection mapping app. A projector displays a full-screen Chrome window (16:9) onto a wall holding physical picture frames in portrait orientation. The app warps artworks (images and videos) onto each frame, cycles them randomly from one or more asset pools, shows optional captions on the wall below each frame, and can play a wallpaper playlist across the wall behind the frames. The app is focused on mapping and showing the user's content; ambient effect layers are out of scope.
 
 The highest priority is mapping precision and mapping UX. The user must be able to align each frame's projected content tightly to a physical rectangle.
 
@@ -19,11 +21,13 @@ Target: desktop Chrome, full screen, FHD or 4K output. No mobile or responsive l
 | Rendering | Three.js, `WebGLRenderer` (WebGL2) | Pin an exact version in `package.json`. Do not use WebGPURenderer. |
 | UI panel | Vanilla DOM + CSS | Native `<details>/<summary>`, `<input type="color">`, `<input type="number">`, `<input type="range">`, checkboxes. No UI framework, no GUI library. |
 | Captions | Canvas2D rendered into a Three.js texture | No text library. |
-| Fonts | Source Serif 4 (titles, italic) and Public Sans (second line), self-hosted | Via Fontsource npm packages or WOFF2 files in `/public/fonts`. No runtime CDN requests. |
+| Fonts | Source Serif 4 (titles, italic) and Public Sans (second line), self-hosted | Via the Fontsource npm packages, bundled by Vite. No runtime CDN requests. |
 | Tests | Vitest | Required for homography math and asset selection logic. |
 | File I/O | File System Access API | `showDirectoryPicker`, file handles, `createWritable`. Chrome only, which is acceptable. |
 
 Approved dependencies are exactly: `three`, `@types/three`, `vite`, `typescript`, `vitest`, and the two Fontsource packages. Adding anything else requires asking the user first.
+
+Versions at the end of the 2026 project, all pinned exactly in `package.json`: `three` 0.186.1, `@types/three` 0.186.0, `vite` 8.2.4, `vitest` 5.0.3, `typescript` 6.0.3, `@fontsource/source-serif-4` 5.3.1, `@fontsource/public-sans` 5.3.0. Vite 8 needs Node.js 20.19+ or 22.12+.
 
 ---
 
@@ -163,6 +167,9 @@ The user opens a **project folder** with `showDirectoryPicker`. All reads and wr
     "cycleDuration": 12,
     "transitionInDuration": 1.5,
     "transitionOutDuration": 1.0,
+    "transitionDelay": 0.5,
+    "dissolveSoftness": 0.5,
+    "dissolveNoiseScale": 1,
     "frameStagger": 3,
     "zoomStart": 1.15,
     "panSpeed": 0.03,
@@ -191,6 +198,7 @@ Field notes:
 - **`playlist`** (per frame, default `[]`) lists the assets the frame plays in a manual show, in order. Each entry names an asset by its asset pool path (`pool`, as listed in `assetPools`) and its `filepath` in that pool; if several assets share a filepath, the first is used. Duplicates are allowed, within one playlist and across frames. Entries whose asset can't be found are kept and skipped. Playlists are kept, but ignored, in a randomized show.
 - **`cycleDuration`, `transitionDelay`** (per frame, default `null`): a manual-show frame's own values for `animation.cycleDuration` and `animation.transitionDelay`. `null` (or missing) uses the animation setting. An invalid value (not a number, negative, or a zero cycle duration) falls back to `null` with a warning. Ignored in a randomized show and by the wall.
 - **`blend`** (per frame, `"normal"` or `"add"`, default `"normal"`). `"normal"` covers whatever is behind the frame. `"add"` adds the frame's light to it, so black (including black gaps between assets and an empty frame) is transparent and frames drawn earlier show through. Meant for bright content on black (fire, glows). Additive content only adds light, so it cannot hide what's behind it, and overlapping bright areas can clip to white.
+- **`transitionDelay`** is how long a frame stays black between artworks. **`dissolveSoftness`** (edge width) and **`dissolveNoiseScale`** (blob size; 1 = about five blobs across a frame) shape the Noise Dissolve. Fields were added over time (`title`, `captionOffsetX`, `blend`, `playlist`, `transitionInStyle`, `transitionDelay`, the per-frame timing fields). A file without one loads with the default shown, so only the manifest → pool rename (version 1 → 2) needed a migration.
 - **`panSpeed`** is in frame widths per second.
 - **Durations** are in seconds.
 - **`id`** is generated once and never reused. Displayed frame numbers are list positions and may renumber after a removal; ids and settings never shift.
@@ -243,20 +251,20 @@ An asset pool is a JSON file listing media. A project can have several (for exam
   - **Save Show** saves everything. For each modified asset pool it copies that pool's staged files (below) into the folder and writes the pool file; then it writes `config.json`. Pools go first so the config is never saved pointing at assets that were not written. If a write fails, the pools already written stay saved and the config is not written. There is no separate pool save.
 - **Adding content** (section 5.6) never writes to disk by itself, and works with or without a folder:
   - A file picked or dropped from **inside** the project folder is listed by its path relative to the pool (found with `FileSystemDirectoryHandle.resolve`). Nothing is copied.
-  - A file from **outside** the folder is *staged*: held in memory under `media/<name>` next to the pool, playable and thumbnailed from memory, and copied there on that pool's next save. If the name is taken on disk or by another staged file (compared without case), the copy is numbered: `name (2).ext`. Names are checked again at save time (a new show's folder is only known then): a taken path gets the next numbered name, and playlists follow. A save never overwrites an existing media file.
+  - A file from **outside** the folder is *staged*: held in memory under `media/<name>` next to the pool, playable and thumbnailed from memory, and copied there on the next Save Show. If the name is taken on disk or by another staged file (compared without case), the copy is numbered: `name (2).ext`. Names are checked again at save time (a new show's folder is only known then): a taken path gets the next numbered name, and playlists follow. A save never overwrites an existing media file.
   - With no pool chosen (a show with no pools yet, or the empty Assets section), files go into a new `assets.json` pool.
   - A file the pool already lists is reused instead of added twice. Unsupported types and folders are skipped with a message.
   - Loading another project discards staged files (after the usual unsaved-changes confirmation).
 - **Removing content:** × on an asset removes it from its pool. The media file is never deleted. Playlist entries that used it are kept and flagged missing.
 - **Removing an asset pool:** a red × in the pool's header removes it from the show and from `assetPools` (config modified). A pool with unsaved changes that lists assets asks for confirmation first; an empty pool is removed at once (nothing would be lost). The pool file and media stay on disk; playlist entries that used it are flagged missing. The × is hidden while only one pool remains.
 - **New assets** are written with `filepath`, `zoom: false` and `pan: false`; `title`, `artist` and `year` once filled in.
-- **Adding an asset pool:** a name typed in the Asset section becomes `<name>.json` at the project root and is added to `assetPools` (config modified). If that file exists it is loaded as is; otherwise an empty pool is created and written on the next Save Show. Pool names are compared without case, so `Art.json` and `art.json` can't both be added.
+- **Adding an asset pool:** a name typed in the Assets section becomes `<name>.json` at the project root and is added to `assetPools` (config modified). If that file exists it is loaded as is; otherwise an empty pool is created and written on the next Save Show. Pool names are compared without case, so `Art.json` and `art.json` can't both be added.
 - Files dropped anywhere outside a drop zone are ignored, so the browser never navigates away from the show.
 - **Unsaved changes:**
   - An indicator in the panel header for each of config and assets.
   - A `beforeunload` confirmation when either is dirty.
 - **Errors:**
-  - A missing or invalid asset pool shows an error in the Asset section, and the app continues with the remaining pools.
+  - A missing or invalid asset pool shows an error in the Assets section, and the app continues with the remaining pools.
   - Media that fails to load is flagged on that asset in the panel and skipped by the scheduler.
 
 ### 5.2 Mapping
@@ -465,9 +473,10 @@ Selection logic gets Vitest coverage:
 
 **Sections**, each with a header and collapsible:
 
-1. **App controls:** "Art Projection Mapper" title, unsaved-change indicators and close button; below them the left/right switch.
-2. **Config:** Load (open project folder), Save. Shows the current folder name. Show type switch (Randomized / Manual).
-3. **Mapping:**
+1. **Pause Show** button, pinned at the very top (see *Toggling and placement*).
+2. **App controls:** "Art Projection Mapper" title, unsaved-change indicators ("Config", "Assets") and close button; below them the left/right switch.
+3. **Config:** Reopen Show (when a remembered folder isn't open), Load Show, Save Show. Shows the current folder name and the latest load or save message. Show type switch (Randomized / Manual).
+4. **Mapping:**
    - Global: background color, debug stroke width, point radius, crosshair size.
    - Wall quad (collapsible): debug color (checkbox-style swatch) and test pattern toggle at the top, then 4 control points with X/Y inputs, the convexity warning, and the "Wallpaper playlist" (section 5.3), shown in both show types.
    - Each frame (collapsible, titled "Frame N: title"):
@@ -484,16 +493,16 @@ Selection logic gets Vitest coverage:
      - convexity warning when applicable
      - playlist (manual show only; hidden when randomized): one row per entry with thumbnail, title, and ↑ ↓ × buttons; the entry on screen is highlighted; missing or failed entries are flagged. "+ Add asset" opens a thumbnail picker of every loaded asset, grouped by asset pool; clicking one appends it.
      - timing (manual show only): "Cycle duration" and "Transition delay" rows, each a checkbox plus a seconds field. Unticked, the field is disabled and shows the Animation value ("Animation"); ticking copies that value in as the frame's own ("own"), and unticking clears it to `null`.
-     - in the playlist picker, an "Import new files…" tile (file picker) and, with several pools, an "Into asset pool" chooser. Files dropped on the playlist do the same. Imported files are added to that pool (section 5.1) and appended to this playlist. A short note ("Added 2 to this playlist.") confirms it and fades out after 4 seconds. The Assets section's own messages do the same when they are informational ("Added 1 file to assets.json…", "Saved…"); warnings and errors stay until the next message.
+     - in the playlist picker, an "Import new files…" tile (file picker) and, with several pools, an "Into asset pool" chooser. Files dropped on the playlist do the same. Imported files are added to that pool (section 5.1) and appended to this playlist. A short note ("Added 2 to this playlist.") confirms it and fades out after 4 seconds. The Assets section's own messages ("Added 1 file to assets.json…") do the same when they are informational; warnings and errors stay until the next message. Load and save results ("Saved config.json, art.json…", load warnings) appear in the Config section and stay until the next one.
    - "Add new frame" button.
-4. **Assets:**
+5. **Assets:**
    - Nested list grouped by asset pool file. Each pool's header has a count, modified/error badges and a red × (hidden for the last pool). Its body ends with "+ Add files…" (multi-select file picker), and the whole pool accepts files dropped from the OS (highlighted while dragging).
    - Each asset is collapsible, with a small preview thumbnail (or video poster), a "new" badge while its file is staged, a × remove button whose hover note says the file stays on disk (and names any frames whose playlists use it), and editable fields:
      - text inputs for `title`, `artist`, `year`, `filepath`
      - checkboxes for `zoom`, `pan`, "Wall only" (`wallOnly`)
    - A name field and "+ Add asset pool" button at the bottom.
    - Edits apply live to what plays. Load errors are flagged per asset.
-5. **Animation:**
+6. **Animation:**
    - first, "Transition-In Style": a Style dropdown (Simple Fade, Noise Dissolve); "Dissolve softness" and "Noise Scale" show only for Noise Dissolve
    - cycle duration, transition in and out durations, transition delay, frame stagger, max hold
    - zoom start, pan speed, pan aspect threshold
@@ -504,7 +513,7 @@ Selection logic gets Vitest coverage:
 
 ## 6. Milestones
 
-Complete each milestone before starting the next. Claude Code cannot see the projected output. At the end of each milestone, stop and ask the user to verify on the physical projector.
+All milestones below were completed in 2026. They are kept as a record of how the app was built; later work (section 9) changed some details, noted inline. For new work, keep the same rhythm: Claude Code cannot see the projected output, so after each step that changes what is projected, stop and ask the user to verify on the physical projector.
 
 **M0: Scaffold**
 - Vite + TS + Three.js project, strict TS config, Vitest configured.
@@ -533,7 +542,7 @@ Complete each milestone before starting the next. Claude Code cannot see the pro
 - Selection logic with tests.
 - Static and cycling modes, stagger, preloading, dissolve transitions.
 - Motion rules in 5.4 (video, pan, zoom, static), cover fit.
-- Asset panel with live editing and its own Save.
+- Asset panel with live editing and its own Save. (Later folded into Save Show; see section 9.)
 - Acceptance:
   - No visible hitch at transitions.
   - Selection tests pass.
@@ -553,7 +562,7 @@ The ambient effects milestone was dropped: the app focuses on mapping and showin
 
 ## 7. Conventions for Claude Code
 
-Copy this section into `CLAUDE.md`.
+`CLAUDE.md` carries these conventions; keep the two in step.
 
 - Do not add dependencies beyond the approved list in section 2 without asking.
 - Pin `three` to an exact version. Do not upgrade it without asking.
@@ -562,31 +571,68 @@ Copy this section into `CLAUDE.md`.
 - Never write to disk except from an explicit Save action.
 - Renderer and panel read state through store subscriptions and change it only through store actions.
 - All animation timing uses the rAF delta-time clock.
-- Write Vitest tests for all math and selection logic. Run `npm test` before reporting a milestone complete.
-- Suggested layout:
+- Write Vitest tests for all math and selection logic. Run `npm test` (and `npm run build`) before reporting work complete.
+- Layout (as the project ended):
   ```
   src/
     main.ts
     state/      store.ts, schema.ts, defaults.ts, migrate.ts
-    io/         projectFolder.ts, configIO.ts, poolIO.ts, handleStore.ts
+    io/         projectController.ts, projectFolder.ts, configIO.ts, poolIO.ts, handleStore.ts
     math/       homography.ts, homography.test.ts, geometry.ts
-    render/     renderer.ts, quadCamera.ts, frameRenderer.ts, wallRenderer.ts,
-                testPattern.ts, transitionMaterial.ts, debugOverlay.ts
+    render/     renderer.ts, quadCamera.ts, quadLayer.ts, testPattern.ts,
+                transitionMaterial.ts, debugOverlay.ts
     content/    selection.ts, shuffleBag.ts, shuffleBag.test.ts, scheduler.ts,
-                mediaLoader.ts, motion.ts
+                mediaLoader.ts, decodeWorker.ts, motion.ts, playlist.ts
     captions/   captionLayout.ts, captionRenderer.ts
-    ui/         panel.ts, hotkeys.ts, sections/*.ts, panel.css
+    ui/         panel.ts, hotkeys.ts, pointerMapping.ts, controls.ts, sections/*.ts, panel.css
   ```
+  This is the layout the project ended with. The README's *For developers* section says what each part does.
 
 ---
 
 ## 8. Assumptions to confirm with the user if behavior seems wrong
 
-These were not explicitly specified and were decided during brief writing:
+These were not explicitly specified and were decided while writing the brief or during the build:
 
 1. An image with `pan = true` whose aspect does not exceed the threshold falls back to zoom if `zoom = true`, otherwise static.
 2. In static mode (playable assets ≤ frames, or a manual playlist with one playable entry), images use static cover with no zoom or pan, videos loop, and captions appear without animation.
 3. `maxHoldDuration` applies only to panning images, not to video.
-4. The cursor stays hidden whenever the panel is closed but cursor shows when debug visuals are shown with `D`. Pressing `D` to hide debug visuals also hides cursor. 
+4. The cursor is hidden while the panel is closed, except while debug visuals are shown with `D`. Pressing `D` again (hiding them) hides the cursor again.
 5. Test pattern toggles are runtime only and not saved to config.
 6. The default transition-in style is a noise-mask dissolve from black (`transitionInStyle: "noise"`); Simple Fade is the alternative.
+7. Saving an asset pool rewrites it from what was parsed. Unknown fields (at the top level and on each asset) are kept, and so is field order. Entries that were skipped with a warning on load, and invalid field values, are dropped; a numeric `year` is written back as text. This was flagged for review during QA and left as is.
+
+---
+
+## 9. History and decisions
+
+Changes to the original plan, in the order they were made, with the reason for each. All in 2026; see `git log` for detail.
+
+| Change | Why |
+|---|---|
+| **Ambient effects milestone dropped.** | The app focuses on mapping and showing the user's content. |
+| **Captions, pause, whole-frame drag, Caption X offset** (with M4). | Captions per the plan, plus controls found useful while mapping. |
+| **Show types: Randomized and Manual**, with per-frame playlists. | To put specific pieces in specific frames, not only a shuffle. |
+| **Additive blend** (`blend: "add"`) and frame reordering (draw order). | Fake transparency for fire, smoke and glows shot on black, layered over other frames. |
+| **Asset "manifests" renamed asset "pools"** (config schema v2, migrated from v1). | A clearer name in the panel and docs. |
+| **`inset` (per-edge masking) removed.** | Corrections are made by moving the control points instead; one less concept. Old files load and drop the key on save. |
+| **In-app content management:** adding files by picker or drag and drop, staging of outside files, adding and removing pools, thumbnails, live edits. | Building a show without hand-editing JSON. |
+| **Wallpaper** (`wallQuad.playlist`) and **Wall only** assets. | Content across the whole wall behind the frames, in either show type, without it leaking into the frames. |
+| **Transition-in styles** (Noise Dissolve default, Simple Fade) and **transition delay**. | More control over how artwork comes and goes: a choice of dissolve or plain fade, and an optional black gap between artworks. |
+| **Frame titles, rotate (button and right-click)**, panel resizing, inline confirmations, hover help. | Mapping UX: telling frames apart in the panel, and turning a frame mapped the wrong way round. |
+| **Save Show saves everything** (Oct 31). The separate Save Asset Pool and Save All Assets buttons were removed. | With two kinds of save it was easy to save the config but not the pool, so the config pointed at assets that were never written and a reload showed them as broken. Pools are now written before the config, so that can't happen. |
+| **Per-frame Cycle duration and Transition delay** in Manual shows (Oct 31), as optional frame fields (`null` = use the Animation setting), no schema version bump. | Different frames needed different pacing, for example a slow video in one frame and quick changes in another. |
+| **Transition delay is read live** (Oct 31). | Shortening a long delay while a frame was black still waited out the old one. The scheduler now stores when the frame went black and compares it with the current delay every tick. Cycle duration is still fixed when an artwork starts, because pan and zoom are planned over the whole hold; making it live would make moving images jump. |
+
+---
+
+## 10. Unfinished work and ideas
+
+**Choreographed mode** (branch `feature/choreography-mode`, one work-in-progress commit). It replaces Manual with a Choreographed show type ported from the Ossuary Wall project. A show is a list of *entries* played in order, each with its own set of mapped frames. Each frame has an asset, delay, duration, loop, fade in and out, fade-in style, opacity, and a true alpha blend for transparent PNG and VP9-alpha WebM. Entries crossfade into each other, and the panel has a transport (Previous / Next / Jump, the **N** hotkey), Solo, and validation warnings. It moves the config to schema v3, with a migration from v2 that turns a Manual show into one entry. The spec is `Choreographed-Mode-Porting.md` on that branch, and the branch has its own tests and QA notes.
+
+Status: set aside on the night of the party, after the user reported that something was broken. The problem was never diagnosed. The branch also predates the Save Show change and per-frame timing in section 9, so it needs `main` merged in. The Save Show change in `projectController.ts` carries over as is; Manual's per-frame timing has no place once Manual is replaced. Start by reproducing the breakage.
+
+**Smaller ideas raised during the project:**
+- Make Cycle duration live too (needs a plan for a pan or zoom that is mid-motion).
+- "Save As" (today: copy the project folder by hand).
+- True alpha blending for transparent images in Randomized and Manual (built on the Choreographed branch as `blend: "alpha"`).

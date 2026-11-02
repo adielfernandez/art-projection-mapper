@@ -1,5 +1,5 @@
 """
-Generate FPO (for placement only) QA project folders for Art Projector.
+Generate FPO (for placement only) QA project folders for Art Projection Mapper.
 
     python fpo/generate.py
 

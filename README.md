@@ -192,7 +192,7 @@ Good to know:
 - **Files already inside the project folder** are used where they are; nothing is copied. Picking one the pool already lists doesn't add it twice.
 - **Removing an item:** click the **×** on it, then **Save Show**. It's removed from the show, but the file itself stays on your disk. If a playlist used it, that entry shows as **missing** until you remove it from the playlist. Hover over the **×** to see which playlists use it.
 - **Removing an asset pool:** click the red **×** in the pool's header, then **Save Show**. The pool file and its media stay on your disk. A show always keeps at least one pool, so the **×** is hidden on the last one.
-- Short confirmation messages ("Added 1 file…", "Saved…") fade away after a few seconds. Warnings, such as a file that couldn't be added, stay until the next message.
+- Short confirmation messages in the Assets section ("Added 1 file…") fade away after a few seconds. Warnings, such as a file that couldn't be added, stay until the next message. The result of **Save Show** ("Saved config.json, my-art.json…") appears in the **Config** section.
 
 ### Adding content by hand
 
@@ -248,3 +248,60 @@ Leave out `title`, `artist` and `year` entirely (or leave them empty) and no cap
 - **Keep videos reasonable.** A frame on the wall is usually a few hundred pixels wide in the projected image, so very large or 4K videos waste power. Around 720p at a good quality setting is plenty for a frame; wallpaper covers the whole wall, so it can use the full projector resolution.
 - **Editing in the app.** Everything in an asset pool can be changed in the **Assets** section: add and remove items, and edit titles, artists, years, paths and the Zoom, Pan and Wall only checkboxes. Click **Save Show** to write the changes to the file.
 - **Renaming a file used in a playlist?** If you change its `filepath` in the Assets section, playlists follow along automatically. If you rename it by editing the JSON instead, update the playlists too, or those entries will show as missing.
+
+---
+
+## What's in this repo
+
+| Folder | What it is |
+|---|---|
+| `src/` | The app (see *For developers* below). |
+| `macabre-show/` | A Randomized show: 2 frames shuffling public-domain macabre artwork with captions (`macabre.json`). |
+| `baphomet-show/` | A Manual show: 8 frames with their own playlists of looping videos, two of them using **Additive blend** (`baphomet.json`). |
+| `fpo/` | Test content for checking the app on a projector. `python fpo/generate.py` builds three test shows (`fpo/show/`, `fpo/static/`, `fpo/tight-pool/`; not stored in git), and `fpo/QA.md` is the checklist that goes with them. |
+| `ProjectBrief.md` | The full specification of how the app behaves, plus the history of design decisions (§9) and unfinished work (§10). |
+| `CLAUDE.md` | Working rules for Claude Code in this repo. |
+
+The two show folders are real shows from the Halloween 2026 party. Their mapping only fits the wall they were made for, so expect to re-map them on another wall.
+
+## Project status
+
+Finished and used for the Halloween 2026 party. Everything described above is on the `main` branch.
+
+## Choreographed mode (experimental, unfinished)
+
+Choreographed mode was an attempt at a more flexible content system: layered, sequenced compositions built from assets, put together in a playlist style. Instead of each frame cycling on its own, a show would be a list of **entries** played in order. Each entry is a composition of mapped regions, and each region has its own asset, start delay, duration, looping, fades, opacity and blend (including real transparency for PNG and WebM). Entries crossfade from one to the next, with Previous / Next / Jump controls to step through the sequence. It was meant to replace Manual mode.
+
+There wasn't enough time before the party to flesh it out properly and make it robust enough for general use, so it was set aside and **is not part of the app on `main`**. The work in progress is on the `feature/choreography-mode` branch, along with its spec (`Choreographed-Mode-Porting.md`). It has a known problem that was never diagnosed, and it predates the last changes on `main`. If you pick it up, read `ProjectBrief.md` §10 first.
+
+## For developers
+
+```bash
+npm test           # unit tests (Vitest)
+npm run build      # typecheck + production build
+npm run typecheck  # typecheck only
+```
+
+Read `ProjectBrief.md` for how everything is meant to behave, and `CLAUDE.md` for the conventions (approved dependencies only, every saved setting goes through the typed schema, nothing is written to disk except by Save Show). When behavior changes, update the README (user guide), the brief (spec and §9 history) and `fpo/QA.md` (on-projector checks) together.
+
+**How it fits together:**
+
+| Part | Files | What it does |
+|---|---|---|
+| State | `src/state/` | `schema.ts` (types for `config.json` and asset pools), `defaults.ts`, `migrate.ts` (older files), `store.ts` (the single store: every change is a store action, and the renderer and panel subscribe to it; also undo). |
+| File I/O | `src/io/` | `projectController.ts` (open, reopen, Save Show, adding files and pools), `configIO.ts` and `poolIO.ts` (validate and write the JSON; bad fields fall back to defaults with a warning), `projectFolder.ts` (File System Access helpers), `handleStore.ts` (remembers the last folder in IndexedDB). |
+| Math | `src/math/` | `homography.ts` (four corners to a 3×3 projective transform), `geometry.ts` (convexity, hit testing, rotation). |
+| Rendering | `src/render/` | `quadCamera.ts` (a homography used as a Three.js camera's projection matrix), `quadLayer.ts` (one mapped quad: content, test pattern, blend), `transitionMaterial.ts` (the shader: cover fit, pan and zoom, noise dissolve, fades), `renderer.ts` (draw order), `testPattern.ts`, `debugOverlay.ts` (the 2D mapping guides). |
+| Playback | `src/content/` | `scheduler.ts` (each frame's loading → in → hold → out cycle), `selection.ts` and `shuffleBag.ts` (Randomized picking with no duplicates on screen), `playlist.ts` (Manual and wallpaper playlists), `motion.ts` (pan and zoom plans and hold times), `mediaLoader.ts` and `decodeWorker.ts` (images decoded and downscaled off the main thread, videos). |
+| Captions | `src/captions/` | `captionLayout.ts` (placement along a frame's bottom edge, wrapping and sizing), `captionRenderer.ts` (Canvas2D text drawn into a texture). |
+| Panel | `src/ui/` | `panel.ts`, `sections/*.ts` (one file per panel section), `controls.ts` (small DOM helpers bound to the store), `pointerMapping.ts` (dragging points and frames), `hotkeys.ts`, `helpTooltip.ts`, `dropZone.ts`, `thumbnails.ts`. |
+
+**Pieces worth reusing in another project:**
+- **Projection mapping with a homography camera** (`math/homography.ts` + `render/quadCamera.ts`): perspective-correct warping of any quad, with no render-to-texture pass. Works with any Three.js content.
+- **Mapping UX** (`ui/pointerMapping.ts`, the nudging in `ui/hotkeys.ts`, undo in `state/store.ts`): drag points or whole quads, 1 / 10 / 0.1 px nudges, Shift for fine control, Tab through points, undo that groups a burst of nudges.
+- **Noise dissolve and cover fit shader** (`render/transitionMaterial.ts`).
+- **Physically square test pattern** (`render/testPattern.ts`): checks a mapping by eye.
+- **Shuffle bag with no repeats across frames** (`content/shuffleBag.ts`, `content/selection.ts`), with tests.
+- **Captions that follow a tilted edge** (`captions/`).
+- **Browser "project folder" I/O** (`io/`): open a local folder, remember it across reloads, stage new files in memory, and write only on Save. Tolerant JSON loading with warnings and versioned migrations.
+
